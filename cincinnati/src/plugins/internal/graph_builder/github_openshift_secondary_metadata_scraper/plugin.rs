@@ -222,7 +222,6 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
         let tmpdir = tempfile::tempdir()?;
 
         {
-            let settings = self.settings.clone();
             let commit = commit.clone();
             let output_whitelist = self.output_whitelist.clone();
             let tmpdir = tmpdir.path().to_owned();
@@ -265,7 +264,7 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
                             .iter()
                             .any(|whitelist_regex| whitelist_regex.is_match(&path))
                         {
-                            debug!("Unpacking {:?} to {:?}", &path, &settings.output_directory);
+                            debug!("Unpacking {:?} to {:?}", &path, &tmpdir);
                             entry
                                 .unpack_in(&tmpdir)
                                 .context(format!("Unpacking {:?} to {:?}", &path, &tmpdir))?;
