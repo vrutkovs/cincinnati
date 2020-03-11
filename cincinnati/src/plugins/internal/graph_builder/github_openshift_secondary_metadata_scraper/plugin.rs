@@ -1,4 +1,5 @@
 use super::github_v3;
+use std::convert::{TryFrom, TryInto};
 
 use crate as cincinnati;
 
@@ -13,10 +14,52 @@ pub static DEFAULT_OUTPUT_WHITELIST: &[&str] = &[
     "raw/metadata.json",
 ];
 
+lazy_static::lazy_static! {
+    pub static ref DEFAULT_REFERENCE_BRANCH: Option<String> = Some(String::from("master"));
+}
+
 /// Environment variable name for the Oauth token path
 pub static GITHUB_SCRAPER_TOKEN_PATH_ENV: &str = "CINCINNATI_GITHUB_SCRAPER_OAUTH_TOKEN_PATH";
 
 static USER_AGENT: &str = "openshift/cincinnati";
+
+/// Models the scrape mode
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum Reference {
+    Branch(String),
+    Revision(String),
+}
+
+impl Reference {
+    fn get_inner(&self) -> &String {
+        match self {
+            Self::Branch(s) => s,
+            Self::Revision(s) => s,
+        }
+    }
+}
+
+impl TryFrom<(Option<&String>, Option<&String>)> for Reference {
+    type Error = failure::Error;
+
+    fn try_from(options: (Option<&String>, Option<&String>)) -> Fallible<Self> {
+        let reference = match (options.0, options.1) {
+            (Some(branch), Some(revision)) => {
+                bail!(
+                    "only one of reference_branch or reference_revision can be set. got {:?} and {:?}",
+                    branch,
+                    revision,
+                );
+            }
+            (None, None) => Reference::Branch(DEFAULT_REFERENCE_BRANCH.clone().unwrap()),
+            (Some(branch), None) => Reference::Branch(branch.to_string()),
+            (None, Some(revision)) => Reference::Revision(revision.to_string()),
+        };
+
+        Ok(reference)
+    }
+}
 
 /// Plugin settings.
 #[derive(Debug, SmartDefault, Clone, Deserialize)]
@@ -24,8 +67,20 @@ static USER_AGENT: &str = "openshift/cincinnati";
 pub struct GithubOpenshiftSecondaryMetadataScraperSettings {
     github_org: String,
     github_repo: String,
-    branch: String,
     output_directory: PathBuf,
+
+    /// Defines the reference branch to be scraped.
+    reference_branch: Option<String>,
+
+    /// Defines the reference revision to be scraped.
+    reference_revision: Option<String>,
+
+    /// Defines the reference to be scraped according to the `Reference` enum.
+    ///
+    /// For now, this cannot be provided via TOML due to missing support for
+    /// deserializing a `toml::Value` to enum newtype variants.
+    #[serde(skip)]
+    reference: Option<Reference>,
 
     /// Vector of regular expressions used as a positive output filter.
     /// An empty vector is regarded as a configuration error.
@@ -37,11 +92,30 @@ pub struct GithubOpenshiftSecondaryMetadataScraperSettings {
 impl GithubOpenshiftSecondaryMetadataScraperSettings {
     /// Validate plugin configuration and fill in defaults.
     pub fn deserialize_config(cfg: toml::Value) -> Fallible<Box<dyn PluginSettings>> {
-        let settings: Self = cfg.try_into()?;
+        let mut settings: Self = cfg
+            .clone()
+            .try_into()
+            .context(format!("Deserializing {:#?}", &cfg))?;
 
         ensure!(!settings.github_org.is_empty(), "empty github_org");
         ensure!(!settings.github_repo.is_empty(), "empty github_repo");
-        ensure!(!settings.branch.is_empty(), "empty branch");
+
+        let reference: Reference = (
+            settings.reference_branch.as_ref(),
+            settings.reference_revision.as_ref(),
+        )
+            .try_into()?;
+        ensure!(!reference.get_inner().is_empty(), "empty reference");
+        settings.reference = Some(reference);
+
+        ensure!(
+            !settings
+                .output_directory
+                .to_str()
+                .unwrap_or_default()
+                .is_empty(),
+            "empty output_directory"
+        );
         ensure!(
             !settings.output_whitelist.is_empty(),
             "empty output_whitelist"
@@ -62,6 +136,9 @@ pub struct State {
 pub struct GithubOpenshiftSecondaryMetadataScraperPlugin {
     settings: GithubOpenshiftSecondaryMetadataScraperSettings,
     output_whitelist: Vec<regex::Regex>,
+
+    #[default(Reference::Branch(DEFAULT_REFERENCE_BRANCH.clone().unwrap()))]
+    reference: Reference,
 
     #[default(FuturesMutex::new(Default::default()))]
     state: FuturesMutex<State>,
@@ -104,6 +181,10 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
             .flatten();
 
         Ok(Self {
+            reference: settings
+                .reference
+                .clone()
+                .ok_or_else(|| failure::err_msg("settings don't contain a 'reference'"))?,
             settings,
             output_whitelist,
             oauth_token,
@@ -112,8 +193,8 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
         })
     }
 
-    /// Lookup the latest commit on the given branch and update `self.state.commit_wanted`.
-    async fn refresh_commit_wanted(&self) -> Fallible<bool> {
+    /// Lookup the latest commit on the given branch.
+    async fn get_commit_wanted_branch(&self, branch_wanted: &str) -> Fallible<github_v3::Commit> {
         let url = github_v3::branches_url(&self.settings.github_org, &self.settings.github_repo);
 
         trace!("Getting branches from {}", &url);
@@ -147,7 +228,7 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
         let latest_commit = branches
             .iter()
             .filter_map(|branch| {
-                if branch.name == self.settings.branch {
+                if branch.name == branch_wanted {
                     Some(branch.commit.clone())
                 } else {
                     None
@@ -159,26 +240,47 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
                     "{}/{} does not have branch {}: {:#?}",
                     &self.settings.github_org,
                     &self.settings.github_repo,
-                    &self.settings.branch,
+                    &branch_wanted,
                     &branches
                 ))
             })?;
 
         trace!(
             "Latest commit on branch {}: {:?}",
-            &self.settings.branch,
+            &branch_wanted,
             &latest_commit
         );
 
+        Ok(latest_commit)
+    }
+
+    /// Construct a github_v3::Commit from the given revision
+    async fn get_commit_wanted_revision(&self, revision: &str) -> github_v3::Commit {
+        github_v3::Commit {
+            url: github_v3::commit_url(
+                &self.settings.github_org,
+                &self.settings.github_repo,
+                &revision,
+            ),
+            sha: revision.to_owned(),
+        }
+    }
+
+    /// Refresh `self.state.commit_wanted` and determine if an update is required.
+    async fn refresh_commit_wanted(&self) -> Fallible<bool> {
+        let commit_wanted = match &self.reference {
+            Reference::Revision(revision) => self.get_commit_wanted_revision(revision).await,
+            Reference::Branch(branch) => self.get_commit_wanted_branch(branch).await?,
+        };
+
         let mut state = self.state.lock().await;
 
-        (*state).commit_wanted = Some(latest_commit.clone());
-
-        let should_update = if let Some(commit_completed) = &state.commit_completed {
-            commit_completed != &latest_commit
-        } else {
-            true
+        let should_update = match &state.commit_completed {
+            Some(commit_completed) => commit_completed == &commit_wanted,
+            None => true,
         };
+
+        (*state).commit_wanted = Some(commit_wanted);
 
         Ok(should_update)
     }
@@ -199,6 +301,7 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
             &commit_wanted,
         );
 
+        trace!("Downloading {:?} from {}", &commit_wanted, &url);
         reqwest::Client::new()
             .get(&url)
             .header(reqwest::header::USER_AGENT, USER_AGENT)
@@ -345,12 +448,12 @@ mod network_tests {
 
         let oauth_token_path = std::env::var(GITHUB_SCRAPER_TOKEN_PATH_ENV)?;
 
-        let settings =
-            toml::from_str::<GithubOpenshiftSecondaryMetadataScraperSettings>(&format!(
+        let settings = GithubOpenshiftSecondaryMetadataScraperSettings::deserialize_config(
+            toml::Value::from_str(&format!(
                 r#"
                     github_org = "openshift"
                     github_repo = "cincinnati-graph-data"
-                    branch = "master"
+                    reference = {{ revision = "6420f7fbf3724e1e5e329ae8d1e2985973f60c14" }}
                     output_whitelist = [ {} ]
                     output_directory = {:?}
                     oauth_token_path = {:?}
@@ -362,18 +465,19 @@ mod network_tests {
                     .join(", "),
                 &tmpdir.path(),
                 oauth_token_path,
-            ))?;
+            ))?,
+        )?;
 
         debug!("Settings: {:#?}", &settings);
 
-        let plugin = Box::new(GithubOpenshiftSecondaryMetadataScraperPlugin::try_new(
-            settings,
-        )?);
+        let plugin = settings.build_plugin(None)?;
 
-        let _ = runtime.block_on(plugin.run_internal(InternalIO {
-            graph: Default::default(),
-            parameters: Default::default(),
-        }))?;
+        let _ = runtime.block_on(plugin.run(cincinnati::plugins::PluginIO::InternalIO(
+            InternalIO {
+                graph: Default::default(),
+                parameters: Default::default(),
+            },
+        )))?;
 
         let regexes = DEFAULT_OUTPUT_WHITELIST
             .iter()
