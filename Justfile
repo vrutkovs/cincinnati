@@ -4,6 +4,11 @@ testdata_dir := "e2e/tests/testdata/"
 metadata_revision_file := "metadata_revision"
 metadata_reference :='reference_branch = "master"'
 
+pause_secs := "9999999"
+registry := "https://quay.io"
+repository := "openshift-release-dev/ocp-release"
+credentials_file := "${HOME}/.docker/config.json"
+
 metadata_reference_e2e:
 	printf 'reference_revision = "%s"' "$(cat {{testdata_dir}}/{{metadata_revision_file}})"
 
@@ -73,7 +78,9 @@ run-e2e:
 	#!/usr/bin/env bash
 	set -e
 
-	just run-daemons-e2e 2>&1 &
+	just \
+		registry="{{registry}}" repository="{{repository}}" \
+		run-daemons-e2e 2>&1 &
 	DAEMON_PARENTPID=$!
 	trap "kill $DAEMON_PARENTPID" EXIT
 
@@ -121,8 +128,7 @@ display-graph:
 
 	jq -cM . | {{invocation_directory()}}/hack/graph.sh | dot -Tsvg > graph.svg; xdg-open graph.svg
 
-
-run-graph-builder registry="https://quay.io" repository="openshift-release-dev/ocp-release" credentials_file="${HOME}/.docker/config.json":
+run-graph-builder:
 	#!/usr/bin/env bash
 	export RUST_BACKTRACE=1
 
@@ -133,7 +139,7 @@ run-graph-builder registry="https://quay.io" repository="openshift-release-dev/o
 		verbosity = "vvv"
 
 		[service]
-		pause_secs = 9999999
+		pause_secs = {{pause_secs}}
 		address = "127.0.0.1"
 		port = 8080
 		path_prefix = "{{path_prefix}}"
@@ -167,10 +173,13 @@ run-graph-builder registry="https://quay.io" repository="openshift-release-dev/o
 	)
 
 run-graph-builder-satellite:
-	just run-graph-builder 'sat-r220-02.lab.eng.rdu2.redhat.com' 'default_organization-custom-ocp'
+	just registry='sat-r220-02.lab.eng.rdu2.redhat.com' repository='default_organization-custom-ocp' run-graph-builder
 
 run-graph-builder-e2e:
-	just metadata_reference="$(just metadata_reference_e2e)" run-graph-builder
+	just \
+		registry="{{registry}}" repository="{{repository}}" \
+		metadata_reference="$(just metadata_reference_e2e)" \
+		run-graph-builder
 
 run-policy-engine:
 	#!/usr/bin/env bash
@@ -194,7 +203,9 @@ run-daemons:
 
 run-daemons-e2e:
 	#!/usr/bin/env bash
-	just run-graph-builder-e2e 2>&1 &
+	just \
+		registry="{{registry}}" repository="{{repository}}" \
+		run-graph-builder-e2e 2>&1 &
 	PG_PID=$!
 
 	just run-policy-engine 2>&1 &
