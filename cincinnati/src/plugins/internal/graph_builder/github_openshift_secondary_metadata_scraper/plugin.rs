@@ -276,7 +276,7 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
         let mut state = self.state.lock().await;
 
         let should_update = match &state.commit_completed {
-            Some(commit_completed) => commit_completed == &commit_wanted,
+            Some(commit_completed) => commit_completed != &commit_wanted,
             None => true,
         };
 
