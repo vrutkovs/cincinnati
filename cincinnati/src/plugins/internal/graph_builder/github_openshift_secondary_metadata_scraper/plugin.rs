@@ -14,6 +14,9 @@ pub static DEFAULT_OUTPUT_WHITELIST: &[&str] = &[
     "raw/metadata.json",
 ];
 
+// Defines the key for placing the data directory path in the IO parameters
+pub static GRAPH_DATA_DIR_PARAM_KEY: &str = "io.openshift.upgrades.secondary_metadata.directory";
+
 lazy_static::lazy_static! {
     pub static ref DEFAULT_REFERENCE_BRANCH: Option<String> = Some(String::from("master"));
 }
@@ -132,19 +135,18 @@ pub struct State {
 }
 
 /// Plugin.
-#[derive(Debug, SmartDefault)]
+#[derive(Debug)]
 pub struct GithubOpenshiftSecondaryMetadataScraperPlugin {
     settings: GithubOpenshiftSecondaryMetadataScraperSettings,
     output_whitelist: Vec<regex::Regex>,
 
-    #[default(Reference::Branch(DEFAULT_REFERENCE_BRANCH.clone().unwrap()))]
     reference: Reference,
 
-    #[default(FuturesMutex::new(Default::default()))]
     state: FuturesMutex<State>,
     oauth_token: Option<String>,
 
     client: reqwest::Client,
+    data_dir: tempfile::TempDir,
 }
 
 impl GithubOpenshiftSecondaryMetadataScraperPlugin {
@@ -180,6 +182,14 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
             })
             .flatten();
 
+        // Create the output directory if it doesn't exist
+        std::fs::create_dir_all(&settings.output_directory).context(format!(
+            "Creating directory {:?}",
+            &settings.output_directory
+        ))?;
+
+        let data_dir = tempfile::tempdir_in(&settings.output_directory)?;
+
         Ok(Self {
             reference: settings
                 .reference
@@ -188,8 +198,10 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
             settings,
             output_whitelist,
             oauth_token,
+            data_dir,
 
-            ..Default::default()
+            state: FuturesMutex::new(State::default()),
+            client: reqwest::Client::default(),
         })
     }
 
@@ -322,7 +334,7 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
     /// Extract a given blob to the output directory, adhering to the output whitelist, and finally update the completed commit state.
     async fn extract(&self, commit: github_v3::Commit, bytes: Box<[u8]>) -> Fallible<()> {
         // Use a tempdir as intermediary extraction target, and later rename to the destination
-        let tmpdir = tempfile::tempdir()?;
+        let tmpdir = tempfile::tempdir_in(&self.settings.output_directory)?;
 
         {
             let commit = commit.clone();
@@ -386,7 +398,24 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
                 &self.settings.github_repo,
                 &commit,
             ));
-            let rename_to = &self.settings.output_directory;
+
+            // Append a directory for safety reasons, so we don't wipe the given output directory if it already exists
+            let rename_to = &self.data_dir;
+
+            // Remove the target directory if it exists
+            if tokio::fs::OpenOptions::new()
+                .read(true)
+                .write(false)
+                .create(false)
+                .open(&rename_to)
+                .await
+                .is_ok()
+            {
+                let msg = format!("Removing pre-existing directory {:?}", &rename_to);
+                debug!("{}", &msg);
+                tokio::fs::remove_dir_all(&rename_to).await.context(msg)?;
+            }
+
             let msg = format!("Renaming {:?} -> {:?}", &rename_from, &rename_to);
 
             // Acquire the state lock as we're going to move files from the
@@ -415,7 +444,16 @@ impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
 
 #[async_trait]
 impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+        io.parameters.insert(
+            GRAPH_DATA_DIR_PARAM_KEY.to_string(),
+            self.data_dir
+                .path()
+                .to_str()
+                .ok_or_else(|| failure::err_msg("data_dir cannot be converted to str"))?
+                .to_string(),
+        );
+
         let should_update = self
             .refresh_commit_wanted()
             .await
@@ -472,48 +510,50 @@ mod network_tests {
 
         let plugin = settings.build_plugin(None)?;
 
-        let _ = runtime.block_on(plugin.run(cincinnati::plugins::PluginIO::InternalIO(
-            InternalIO {
-                graph: Default::default(),
-                parameters: Default::default(),
-            },
-        )))?;
+        for _ in 0..2 {
+            let _ = runtime.block_on(plugin.run(cincinnati::plugins::PluginIO::InternalIO(
+                InternalIO {
+                    graph: Default::default(),
+                    parameters: Default::default(),
+                },
+            )))?;
 
-        let regexes = DEFAULT_OUTPUT_WHITELIST
-            .iter()
-            .map(|s| regex::Regex::new(s).unwrap())
-            .collect::<Vec<regex::Regex>>();
-        assert!(!regexes.is_empty(), "no regexes compiled");
+            let regexes = DEFAULT_OUTPUT_WHITELIST
+                .iter()
+                .map(|s| regex::Regex::new(s).unwrap())
+                .collect::<Vec<regex::Regex>>();
+            assert!(!regexes.is_empty(), "no regexes compiled");
 
-        let extracted_paths: HashSet<String> = walkdir::WalkDir::new(tmpdir.path())
-            .into_iter()
-            .map(Result::unwrap)
-            .filter(|entry| entry.file_type().is_file())
-            .filter_map(|file| {
-                let path = file.path();
-                path.to_str().map(str::to_owned)
-            })
-            .collect();
-        assert!(!extracted_paths.is_empty(), "no files were extracted");
+            let extracted_paths: HashSet<String> = walkdir::WalkDir::new(tmpdir.path())
+                .into_iter()
+                .map(Result::unwrap)
+                .filter(|entry| entry.file_type().is_file())
+                .filter_map(|file| {
+                    let path = file.path();
+                    path.to_str().map(str::to_owned)
+                })
+                .collect();
+            assert!(!extracted_paths.is_empty(), "no files were extracted");
 
-        // ensure all files match the configured regexes
-        extracted_paths.iter().for_each(|path| {
-            assert!(
-                regexes.iter().any(|re| re.is_match(&path)),
-                "{} doesn't match any of the regexes: {:#?}",
-                path,
-                regexes
-            )
-        });
+            // ensure all files match the configured regexes
+            extracted_paths.iter().for_each(|path| {
+                assert!(
+                    regexes.iter().any(|re| re.is_match(&path)),
+                    "{} doesn't match any of the regexes: {:#?}",
+                    path,
+                    regexes
+                )
+            });
 
-        // ensure every regex matches at least one file
-        regexes.iter().for_each(|re| {
-            assert!(
-                extracted_paths.iter().any(|path| re.is_match(path)),
-                "regex {} didn't match a file",
-                &re
-            );
-        });
+            // ensure every regex matches at least one file
+            regexes.iter().for_each(|re| {
+                assert!(
+                    extracted_paths.iter().any(|path| re.is_match(path)),
+                    "regex {} didn't match a file",
+                    &re
+                );
+            });
+        }
 
         Ok(())
     }
