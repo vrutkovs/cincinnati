@@ -5,6 +5,7 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use prometheus::{histogram_opts, Histogram, IntGauge};
 use std::convert::TryInto;
 
 /// Default registry to scrape.
@@ -87,7 +88,10 @@ pub struct ReleaseScrapeDockerv2Plugin {
     cache: registry::cache::Cache,
 
     #[debug(skip)]
-    graph_upstream_raw_releases: prometheus::IntGauge,
+    graph_upstream_raw_releases: IntGauge,
+
+    #[debug(skip)]
+    scrape_docker_duration: Histogram,
 }
 
 impl ReleaseScrapeDockerv2Plugin {
@@ -99,14 +103,21 @@ impl ReleaseScrapeDockerv2Plugin {
         cache: Option<registry::cache::Cache>,
         prometheus_registry: Option<&prometheus::Registry>,
     ) -> failure::Fallible<Self> {
-        use prometheus::IntGauge;
         let graph_upstream_raw_releases: IntGauge = IntGauge::new(
             "graph_upstream_raw_releases",
             "Number of releases fetched from upstream, before processing",
         )?;
 
+        let scrape_docker_duration: Histogram = Histogram::with_opts(histogram_opts!(
+            "cincinnati_plugin_scrape_docker",
+            "Time taken to process arch filter in seconds",
+            vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+        ))
+        .unwrap();
+
         if let Some(prometheus_registry) = &prometheus_registry {
             prometheus_registry.register(Box::new(graph_upstream_raw_releases.clone()))?;
+            prometheus_registry.register(Box::new(scrape_docker_duration.clone()))?;
         }
 
         let registry = registry::Registry::try_from_str(&settings.registry)
@@ -127,6 +138,7 @@ impl ReleaseScrapeDockerv2Plugin {
             registry,
             cache: cache.unwrap_or_else(registry::cache::new),
             graph_upstream_raw_releases,
+            scrape_docker_duration,
         })
     }
 }
@@ -134,6 +146,7 @@ impl ReleaseScrapeDockerv2Plugin {
 #[async_trait]
 impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let timer = self.scrape_docker_duration.start_timer();
         let releases = registry::fetch_releases(
             &self.registry,
             &self.settings.repository,
@@ -160,6 +173,7 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
         let graph =
             cincinnati::plugins::internal::graph_builder::release::create_graph(releases).unwrap();
 
+        timer.observe_duration();
         Ok(InternalIO {
             graph,
             parameters: io.parameters,

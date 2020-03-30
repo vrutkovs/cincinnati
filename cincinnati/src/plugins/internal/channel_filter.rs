@@ -9,6 +9,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use commons::GraphError;
 use lazy_static::lazy_static;
+use prometheus::{histogram_opts, Histogram};
 
 static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 static DEFAULT_CHANNEL_KEY: &str = "release.channels";
@@ -23,8 +24,21 @@ pub struct ChannelFilterPlugin {
     pub key_suffix: String,
 }
 
+lazy_static! {
+    // Histogram with custom bucket values for serving latency metric (in seconds), values are picked based on monthly data
+    static ref CHANNEL_FILTER_DURATION: Histogram = Histogram::with_opts(histogram_opts!(
+        "cincinnati_plugin_channel_filter",
+        "Time taken to process channel filter in seconds",
+        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+    ))
+    .unwrap();
+}
+
 impl PluginSettings for ChannelFilterPlugin {
-    fn build_plugin(&self, _: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+    fn build_plugin(&self, registry: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+        registry
+            .unwrap()
+            .register(Box::new(CHANNEL_FILTER_DURATION.clone()))?;
         Ok(new_plugin!(InternalPluginWrapper(self.clone())))
     }
 }
@@ -54,6 +68,7 @@ lazy_static! {
 #[async_trait]
 impl InternalPlugin for ChannelFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
+        let timer = CHANNEL_FILTER_DURATION.start_timer();
         let channel = get_multiple_values!(internal_io.parameters, "channel")
             .map_err(|e| GraphError::MissingParams(vec![e.to_string()]))?
             .clone();
@@ -94,6 +109,7 @@ impl InternalPlugin for ChannelFilterPlugin {
 
         trace!("removed {} releases", removed);
 
+        timer.observe_duration();
         Ok(InternalIO {
             graph,
             parameters: internal_io.parameters,

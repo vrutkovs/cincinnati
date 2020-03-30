@@ -11,7 +11,7 @@ use self::cincinnati::CONTENT_TYPE;
 
 use commons::GraphError;
 use failure::{Fallible, ResultExt};
-use prometheus::Counter;
+use prometheus::{histogram_opts, Counter, Histogram};
 use reqwest;
 use reqwest::header::{HeaderValue, ACCEPT};
 
@@ -39,6 +39,9 @@ pub struct CincinnatiGraphFetchPlugin {
     /// The optional metric for counting failed upstream requests
     #[debug(skip)]
     pub http_upstream_errors_total: Counter,
+
+    #[debug(skip)]
+    pub fetch_duration: Histogram,
 
     // graph-builder connection client
     client: reqwest::Client,
@@ -78,10 +81,17 @@ impl CincinnatiGraphFetchPlugin {
             "http_upstream_errors_total",
             "Total number of HTTP upstream unreachable errors",
         )?;
+        let fetch_duration = Histogram::with_opts(histogram_opts!(
+            "cincinnati_plugin_graph_fetch_duration",
+            "Time taken to fetch graph",
+            vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+        ))
+        .unwrap();
 
         if let Some(registry) = &prometheus_registry {
             registry.register(Box::new(http_upstream_reqs.clone()))?;
             registry.register(Box::new(http_upstream_errors_total.clone()))?;
+            registry.register(Box::new(fetch_duration.clone()))?;
         };
 
         let client = reqwest::ClientBuilder::new()
@@ -92,6 +102,7 @@ impl CincinnatiGraphFetchPlugin {
             upstream,
             http_upstream_reqs,
             http_upstream_errors_total,
+            fetch_duration,
             client,
         })
     }
@@ -101,6 +112,7 @@ impl CincinnatiGraphFetchPlugin {
     async fn do_run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();
+        let timer = self.fetch_duration.start_timer();
 
         let res = self
             .client
@@ -123,6 +135,7 @@ impl CincinnatiGraphFetchPlugin {
         let graph =
             serde_json::from_slice(&body).map_err(|e| GraphError::FailedJsonIn(e.to_string()))?;
 
+        timer.observe_duration();
         Ok(InternalIO {
             graph,
             parameters: io.parameters,

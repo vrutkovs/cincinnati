@@ -9,6 +9,9 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use lazy_static::lazy_static;
+use prometheus::{histogram_opts, Histogram};
+
 pub static DEFAULT_QUAY_LABEL_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_QUAY_MANIFESTREF_KEY: &str = "io.openshift.upgrades.graph.release.manifestref";
 pub static DEFAULT_QUAY_REPOSITORY: &str = "openshift";
@@ -42,8 +45,18 @@ pub struct QuayMetadataFetchPlugin {
     manifestref_key: String,
 }
 
+lazy_static! {
+    // Histogram with custom bucket values for serving latency metric (in seconds), values are picked based on monthly data
+    static ref FETCH_QUAY_METADATA_DURATION: Histogram = Histogram::with_opts(histogram_opts!(
+        "cincinnati_plugin_fetch_quay_metadata",
+        "Time taken to process fetch quay metadata in seconds",
+        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+    ))
+    .unwrap();
+}
+
 impl PluginSettings for QuayMetadataSettings {
-    fn build_plugin(&self, _: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+    fn build_plugin(&self, registry: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
         let cfg = self.clone();
         let plugin = QuayMetadataFetchPlugin::try_new(
             cfg.repository,
@@ -52,6 +65,9 @@ impl PluginSettings for QuayMetadataSettings {
             cfg.api_credentials_path,
             cfg.api_base,
         )?;
+        registry
+            .unwrap()
+            .register(Box::new(FETCH_QUAY_METADATA_DURATION.clone()))?;
         Ok(new_plugin!(InternalPluginWrapper(plugin)))
     }
 }
@@ -99,6 +115,7 @@ impl QuayMetadataFetchPlugin {
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let timer = FETCH_QUAY_METADATA_DURATION.start_timer();
         let (mut graph, parameters) = (io.graph, io.parameters);
 
         trace!("fetching metadata from quay labels...");
@@ -166,6 +183,7 @@ impl InternalPlugin for QuayMetadataFetchPlugin {
             }
         }
 
+        timer.observe_duration();
         Ok(InternalIO { graph, parameters })
     }
 }

@@ -4,6 +4,9 @@ use self::cincinnati::plugins::internal::graph_builder::github_openshift_seconda
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use lazy_static::lazy_static;
+use prometheus::{histogram_opts, Histogram};
+
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 
 mod graph_data_model {
@@ -141,9 +144,22 @@ impl OpenshiftSecondaryMetadataParserPlugin {
     }
 }
 
+lazy_static! {
+    // Histogram with custom bucket values for serving latency metric (in seconds), values are picked based on monthly data
+    static ref SECONDARY_METADATA_PARSER_DURATION: Histogram = Histogram::with_opts(histogram_opts!(
+        "cincinnati_plugin_secondary_parser",
+        "Time taken to process arch filter in seconds",
+        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+    ))
+    .unwrap();
+}
+
 impl PluginSettings for OpenshiftSecondaryMetadataParserSettings {
-    fn build_plugin(&self, _: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+    fn build_plugin(&self, registry: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
         let plugin = OpenshiftSecondaryMetadataParserPlugin::new(self.clone());
+        registry
+            .unwrap()
+            .register(Box::new(SECONDARY_METADATA_PARSER_DURATION.clone()))?;
         Ok(new_plugin!(InternalPluginWrapper(plugin)))
     }
 }
@@ -472,12 +488,14 @@ impl OpenshiftSecondaryMetadataParserPlugin {
 #[async_trait]
 impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
     async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+        let timer = SECONDARY_METADATA_PARSER_DURATION.start_timer();
         let data_dir = self.get_data_directory(&io);
 
         self.process_raw_metadata(&mut io.graph, &data_dir).await?;
         self.process_blocked_edges(&mut io.graph, &data_dir).await?;
         self.process_channels(&mut io.graph, &data_dir).await?;
 
+        timer.observe_duration();
         Ok(io)
     }
 }

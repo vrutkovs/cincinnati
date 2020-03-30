@@ -6,6 +6,7 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use prometheus::{histogram_opts, Histogram};
 use tokio::sync::Mutex as FuturesMutex;
 
 pub static DEFAULT_OUTPUT_WHITELIST: &[&str] = &[
@@ -19,6 +20,13 @@ pub static GRAPH_DATA_DIR_PARAM_KEY: &str = "io.openshift.upgrades.secondary_met
 
 lazy_static::lazy_static! {
     pub static ref DEFAULT_REFERENCE_BRANCH: Option<String> = Some(String::from("master"));
+    // Histogram with custom bucket values for serving latency metric (in seconds), values are picked based on monthly data
+    static ref GITHUB_SCRAPE_DURATION: Histogram = Histogram::with_opts(histogram_opts!(
+        "cincinnati_plugin_github_scraper",
+        "Time taken to process arch filter in seconds",
+        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+    ))
+    .unwrap();
 }
 
 /// Environment variable name for the Oauth token path
@@ -436,8 +444,11 @@ impl GithubOpenshiftSecondaryMetadataScraperPlugin {
 }
 
 impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
-    fn build_plugin(&self, _: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+    fn build_plugin(&self, registry: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
         let plugin = GithubOpenshiftSecondaryMetadataScraperPlugin::try_new(self.clone())?;
+        registry
+            .unwrap()
+            .register(Box::new(GITHUB_SCRAPE_DURATION.clone()))?;
         Ok(new_plugin!(InternalPluginWrapper(plugin)))
     }
 }
@@ -445,6 +456,7 @@ impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
 #[async_trait]
 impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
     async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+        let timer = GITHUB_SCRAPE_DURATION.start_timer();
         io.parameters.insert(
             GRAPH_DATA_DIR_PARAM_KEY.to_string(),
             self.data_dir
@@ -469,6 +481,7 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
                 .context("Extracting tarball")?;
         };
 
+        timer.observe_duration();
         Ok(io)
     }
 }

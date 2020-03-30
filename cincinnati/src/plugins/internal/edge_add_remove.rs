@@ -5,6 +5,9 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use lazy_static::lazy_static;
+use prometheus::{histogram_opts, Histogram};
+
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_REMOVE_ALL_EDGES_VALUE: &str = "*";
 
@@ -22,23 +25,38 @@ pub struct EdgeAddRemovePlugin {
     pub remove_consumed_metadata: bool,
 }
 
+lazy_static! {
+    // Histogram with custom bucket values for serving latency metric (in seconds), values are picked based on monthly data
+    static ref EDGE_ADD_REMOVE_DURATION: Histogram = Histogram::with_opts(histogram_opts!(
+        "cincinnati_plugin_edge_add_remove",
+        "Time taken to process edge add remove filter in seconds",
+        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 5.0]
+    ))
+    .unwrap();
+}
+
+impl PluginSettings for EdgeAddRemovePlugin {
+    fn build_plugin(&self, registry: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
+        registry
+            .unwrap()
+            .register(Box::new(EDGE_ADD_REMOVE_DURATION.clone()))?;
+        Ok(new_plugin!(InternalPluginWrapper(self.clone())))
+    }
+}
+
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let timer = EDGE_ADD_REMOVE_DURATION.start_timer();
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
         self.remove_edges(&mut graph)?;
 
+        timer.observe_duration();
         Ok(InternalIO {
             graph,
             parameters: io.parameters,
         })
-    }
-}
-
-impl PluginSettings for EdgeAddRemovePlugin {
-    fn build_plugin(&self, _: Option<&prometheus::Registry>) -> Fallible<BoxedPlugin> {
-        Ok(new_plugin!(InternalPluginWrapper(self.clone())))
     }
 }
 
