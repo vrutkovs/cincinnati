@@ -71,7 +71,7 @@ oc new-app -f dist/openshift/cincinnati.yaml \
       [[plugin_settings]]
       name = "release-scrape-dockerv2"
       repository = "openshift-release-dev/ocp-release"
-      fetch_concurrency = 128
+      fetch_concurrency = 16
 
       [[plugin_settings]]
       name = "github-secondary-metadata-scrape"
