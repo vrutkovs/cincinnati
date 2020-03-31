@@ -103,6 +103,7 @@ pub async fn index(
 ) -> Result<HttpResponse, GraphError> {
     let mut carrier: HashMap<String, String> = HashMap::new();
     let headers = req.headers();
+    let query_string = req.query_string().to_string();
     for (k, v) in headers {
         carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
     }
@@ -112,7 +113,9 @@ pub async fn index(
     for (k, v) in carrier {
         _span = _span.tag(Tag::new(k, v))
     }
-    _span.start();
+    // Tracing: keep query_string as a tag
+    _span = _span.tag(Tag::new("query_string", query_string));
+    let _ = _span.start();
 
     V1_GRAPH_INCOMING_REQS.inc();
 
