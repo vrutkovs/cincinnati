@@ -8,6 +8,7 @@ use cincinnati::CONTENT_TYPE;
 use commons::{self, GraphError};
 use failure::Fallible;
 use prometheus::{histogram_opts, Counter, Histogram, Registry};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::SpanContext;
 use serde_json;
 use std::collections::HashMap;
@@ -47,12 +48,11 @@ pub(crate) async fn index(
     }
 
     let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-    let _span = app_data
-        .get_ref()
-        .tracer
-        .span("index")
-        .child_of(&context)
-        .start();
+    let mut _span = app_data.get_ref().tracer.span("index").child_of(&context);
+    for (k, v) in carrier {
+        _span = _span.tag(Tag::new(k, v))
+    }
+    _span.start();
 
     V1_GRAPH_INCOMING_REQS.inc();
 
