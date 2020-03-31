@@ -12,6 +12,7 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use commons::GraphError;
+
 use lazy_static::lazy_static;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -76,6 +77,9 @@ fn infer_arch(arch: Option<String>, default_arch: String) -> Result<String, Grap
     }
 }
 
+use commons::tracing::get_tracer;
+use opentelemetry::api::{Span, Tracer};
+
 /// Regex for arch label validation.
 static ARCH_VALIDATION_REGEX_STR: &str = r"^[0-9a-z]+$";
 
@@ -87,6 +91,10 @@ lazy_static! {
 #[async_trait]
 impl InternalPlugin for ArchFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
+        get_tracer()
+            .get_active_span()
+            .update_name("arch-filter".to_string());
+
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
             self.default_arch.clone(),

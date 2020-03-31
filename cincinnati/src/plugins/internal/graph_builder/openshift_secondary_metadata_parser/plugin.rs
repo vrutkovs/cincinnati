@@ -4,6 +4,9 @@ use self::cincinnati::plugins::internal::graph_builder::github_openshift_seconda
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use commons::tracing::get_tracer;
+use opentelemetry::api::{Span, Tracer};
+
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 
 mod graph_data_model {
@@ -472,6 +475,10 @@ impl OpenshiftSecondaryMetadataParserPlugin {
 #[async_trait]
 impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
     async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+        get_tracer()
+            .get_active_span()
+            .update_name("parse-secondary-metadata".to_string());
+
         let data_dir = self.get_data_directory(&io);
 
         self.process_raw_metadata(&mut io.graph, &data_dir).await?;

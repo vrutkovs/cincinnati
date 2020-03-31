@@ -15,9 +15,12 @@ use self::cincinnati::plugins::interface::{PluginError, PluginExchange};
 
 use async_trait::async_trait;
 pub use commons::prelude_errors::*;
+use commons::tracing::get_tracer;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
+
+use opentelemetry::api::{trace::futures::Instrument, Tracer};
 
 pub mod prelude {
     use crate as cincinnati;
@@ -360,7 +363,8 @@ where
     let mut io = initial_io;
 
     for next_plugin in plugins {
-        io = next_plugin.run(io).await?;
+        let span = get_tracer().start("plugin", None);
+        io = next_plugin.run(io).instrument(span).await?;
     }
 
     io.try_into()
@@ -389,7 +393,10 @@ where
     let mut runtime = tokio::runtime::Runtime::new()?;
 
     let timeout = match timeout {
-        None => return runtime.block_on(process(plugins, initial_io)),
+        None => {
+            let span = get_tracer().start("plugins", None);
+            return runtime.block_on(process(plugins, initial_io).instrument(span));
+        }
         Some(timeout) => timeout,
     };
     let deadline = timeout + (timeout / 100);
@@ -400,8 +407,12 @@ where
         let tx = tx.clone();
 
         std::thread::spawn(move || {
-            let io_future =
-                async { tokio::time::timeout(timeout, process(plugins, initial_io)).await };
+            let span = get_tracer().start("plugins", None);
+            let io_future = async {
+                tokio::time::timeout(timeout, process(plugins, initial_io))
+                    .instrument(span)
+                    .await
+            };
             let io_result = runtime
                 .block_on(io_future)
                 .context(format!(
@@ -606,7 +617,6 @@ mod tests {
                 .cloned()
                 .collect(),
             };
-
             let plugins_future = process(
                 PLUGINS.iter(),
                 PluginIO::InternalIO(initial_internalio.clone()),
