@@ -366,7 +366,7 @@ where
     let mut io = initial_io;
 
     for next_plugin in plugins {
-        tracer.span("plugin").child_of(context).start();
+        let _child_span = tracer.span("plugin").child_of(context).start();
         io = next_plugin.run(io).await?;
     }
 
