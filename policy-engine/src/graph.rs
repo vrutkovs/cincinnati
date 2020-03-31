@@ -8,6 +8,7 @@ use cincinnati::CONTENT_TYPE;
 use commons::{self, GraphError};
 use failure::Fallible;
 use prometheus::{histogram_opts, Counter, Histogram, Registry};
+use rustracing_jaeger::span::SpanContext;
 use serde_json;
 use std::collections::HashMap;
 
@@ -39,6 +40,20 @@ pub(crate) async fn index(
     req: HttpRequest,
     app_data: actix_web::web::Data<AppState>,
 ) -> Result<HttpResponse, GraphError> {
+    let mut carrier: HashMap<String, String> = HashMap::new();
+    let headers = req.headers();
+    for (k, v) in headers {
+        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
+    }
+
+    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
+    let _span = app_data
+        .get_ref()
+        .tracer
+        .span("index")
+        .child_of(&context)
+        .start();
+
     V1_GRAPH_INCOMING_REQS.inc();
 
     // Check that the client can accept JSON media type.
