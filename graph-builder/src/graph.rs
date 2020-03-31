@@ -213,7 +213,7 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
         let carrier: HashMap<String, String> = HashMap::new();
 
         let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-        let span = state.tracer.span("scrape").child_of(&context).start();
+        let mut span = state.tracer.span("scrape").child_of(&context).start();
 
         let scrape = cincinnati::plugins::process(
             state.plugins.iter(),
@@ -228,6 +228,10 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
         )
         .await;
         UPSTREAM_SCRAPES.inc();
+
+        span.log(|log| {
+            log.std().message("plugins processed");
+        });
 
         let internal_io = match scrape {
             Ok(internal_io) => internal_io,
@@ -246,8 +250,15 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
                 continue;
             }
         };
+        span.log(|log| {
+            log.std().message("json marshalled");
+        });
 
         *state.json.write() = json_graph;
+
+        span.log(|log| {
+            log.std().message("state written");
+        });
 
         // Record scrape duration
         scrape_value = scrape_timer.stop_and_discard();
@@ -265,5 +276,8 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
         let nodes_count = internal_io.graph.releases_count();
         GRAPH_FINAL_RELEASES.set(nodes_count as i64);
         debug!("graph update completed, {} valid releases", nodes_count);
+        span.log(|log| {
+            log.std().message("done");
+        });
     }
 }
