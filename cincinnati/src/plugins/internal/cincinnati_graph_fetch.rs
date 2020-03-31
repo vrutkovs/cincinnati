@@ -13,7 +13,9 @@ use commons::GraphError;
 use failure::{Fallible, ResultExt};
 use prometheus::Counter;
 use reqwest;
-use reqwest::header::{HeaderValue, ACCEPT};
+use reqwest::header::{HeaderName, HeaderValue, ACCEPT};
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
 use std::time::Duration;
 
 /// Default URL to upstream graph provider.
@@ -21,6 +23,10 @@ pub static DEFAULT_UPSTREAM_URL: &str = "http://localhost:8080/v1/graph";
 
 /// Default graph-builder connection timeout in seconds.
 pub static DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+/// Header name used by jaeger to set trace context
+pub static TRACE_HEADER_NAME: &str = "uber-trace-id";
+// TODO: find a way to import rustracing_jaeger::constants::TRACER_CONTEXT_HEADER_NAME?
 
 /// Plugin settings.
 #[derive(Clone, CustomDebug, Deserialize, SmartDefault)]
@@ -108,7 +114,18 @@ impl CincinnatiGraphFetchPlugin {
 }
 
 impl CincinnatiGraphFetchPlugin {
-    async fn do_run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn do_run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "graph-fetch"));
+
+        // extract current trace ID so that we could pass it to graph-builder
+        let trace_hdr_name = HeaderName::from_lowercase(TRACE_HEADER_NAME.as_bytes()).unwrap();
+
+        let trace_id = match span.context() {
+            Some(context) => context.state().to_string(),
+            None => String::new(),
+        };
+        let trace_hdr_value = HeaderValue::from_str(&trace_id).unwrap();
+
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();
 
@@ -116,6 +133,7 @@ impl CincinnatiGraphFetchPlugin {
             .client
             .get(&self.upstream)
             .header(ACCEPT, HeaderValue::from_static(CONTENT_TYPE))
+            .header(trace_hdr_name, trace_hdr_value)
             .send()
             .map_err(|e| GraphError::FailedUpstreamFetch(e.to_string()))
             .await?;
@@ -142,8 +160,8 @@ impl CincinnatiGraphFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for CincinnatiGraphFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        self.do_run_internal(io)
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        self.do_run_internal(io, span)
             .map_err(move |e| {
                 error!("error fetching graph: {}", e);
                 self.http_upstream_errors_total.inc();
@@ -161,6 +179,7 @@ mod tests {
     use commons::testing::{self, init_runtime};
     use failure::{bail, Fallible};
     use prometheus::Registry;
+    use rustracing_jaeger::span::Span;
 
     macro_rules! fetch_upstream_success_test {
         (
@@ -189,10 +208,14 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let future_processed_graph = plugin.run_internal(InternalIO {
-                    graph: Default::default(),
-                    parameters: Default::default(),
-                });
+                let mut span = Span::inactive();
+                let future_processed_graph = plugin.run_internal(
+                    InternalIO {
+                        graph: Default::default(),
+                        parameters: Default::default(),
+                    },
+                    &mut span,
+                );
 
                 let processed_graph = runtime
                     .block_on(future_processed_graph)
@@ -254,10 +277,14 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let future_result = plugin.run_internal(InternalIO {
-                    graph: Default::default(),
-                    parameters: Default::default(),
-                });
+                let mut span = Span::inactive();
+                let future_result = plugin.run_internal(
+                    InternalIO {
+                        graph: Default::default(),
+                        parameters: Default::default(),
+                    },
+                    &mut span,
+                );
 
                 assert!(runtime.block_on(future_result).is_err());
 

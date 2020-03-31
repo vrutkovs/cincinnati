@@ -6,6 +6,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
 use tokio::sync::Mutex as FuturesMutex;
 
 pub static DEFAULT_OUTPUT_WHITELIST: &[&str] = &[
@@ -444,7 +446,12 @@ impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
 
 #[async_trait]
 impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
-    async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        mut io: InternalIO,
+        span: &mut Span,
+    ) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "github-scraper"));
         io.parameters.insert(
             GRAPH_DATA_DIR_PARAM_KEY.to_string(),
             self.data_dir
@@ -458,6 +465,10 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
             .refresh_commit_wanted()
             .await
             .context("Checking for new commit")?;
+
+        span.log(|log| {
+            log.std().message("checked for new commit");
+        });
 
         if should_update {
             let (commit, blob) = self
@@ -477,6 +488,7 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
 #[cfg(feature = "test-net")]
 mod network_tests {
     use super::*;
+    use rustracing_jaeger::span::Span;
     use std::collections::HashSet;
     #[test]
     fn openshift_secondary_metadata_extraction() -> Fallible<()> {
@@ -511,12 +523,14 @@ mod network_tests {
         let plugin = settings.build_plugin(None)?;
 
         for _ in 0..2 {
-            let _ = runtime.block_on(plugin.run(cincinnati::plugins::PluginIO::InternalIO(
-                InternalIO {
+            let mut span = Span::inactive();
+            let _ = runtime.block_on(plugin.run(
+                cincinnati::plugins::PluginIO::InternalIO(InternalIO {
                     graph: Default::default(),
                     parameters: Default::default(),
-                },
-            )))?;
+                }),
+                &mut span,
+            ))?;
 
             let regexes = DEFAULT_OUTPUT_WHITELIST
                 .iter()

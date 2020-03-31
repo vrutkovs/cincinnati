@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use actix_web::{middleware, App, HttpServer};
 use commons::metrics::{self, HasRegistry};
 use failure::{ensure, Error, Fallible, ResultExt};
@@ -21,6 +20,11 @@ use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
+use trackable::{track, track_try_unwrap};
+
+use rustracing::sampler::AllSampler;
+use rustracing_jaeger::reporter::JaegerCompactReporter;
+use rustracing_jaeger::Tracer;
 
 fn main() -> Result<(), Error> {
     let sys = actix::System::new("graph-builder");
@@ -34,6 +38,10 @@ fn main() -> Result<(), Error> {
 
     let registry: prometheus::Registry =
         metrics::new_registry(Some(config::METRICS_PREFIX.to_string()))?;
+
+    // Enable tracing
+    let (span_tx, span_rx) = crossbeam_channel::bounded(10);
+    let tracer = Arc::new(Tracer::with_sender(AllSampler, span_tx));
 
     let plugins = settings.validate_and_build_plugins(Some(&registry))?;
 
@@ -60,8 +68,19 @@ fn main() -> Result<(), Error> {
             ready,
             Box::leak(Box::new(plugins)),
             Box::leak(Box::new(registry)),
+            Box::leak(Box::new(tracer)),
         )
     };
+
+    // Spawns a reporting thread at the initialization phase in your application
+    std::thread::spawn(move || {
+        let reporter = track_try_unwrap!(JaegerCompactReporter::new("graph-builder"));
+        while let Ok(span) = span_rx.recv() {
+            if reporter.report(&[span][..]).is_err() {
+                break;
+            }
+        }
+    });
 
     // Graph scraper
     {
@@ -161,7 +180,17 @@ mod tests {
             metrics::new_registry(Some(config::METRICS_PREFIX.to_string())).unwrap(),
         ));
 
-        State::new(json_graph, HashSet::new(), live, ready, plugins, registry)
+        let (span_tx, _) = crossbeam_channel::bounded(10);
+        let tracer = Tracer::with_sender(AllSampler, span_tx);
+        State::new(
+            json_graph,
+            HashSet::new(),
+            live,
+            ready,
+            plugins,
+            registry,
+            Box::leak(Box::new(tracer)),
+        )
     }
 
     #[test]

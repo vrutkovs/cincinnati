@@ -5,6 +5,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
 use std::convert::TryInto;
 
 /// Default registry to scrape.
@@ -133,7 +135,9 @@ impl ReleaseScrapeDockerv2Plugin {
 
 #[async_trait]
 impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "docker-scraper"));
+
         let releases = registry::fetch_releases(
             &self.registry,
             &self.settings.repository,
@@ -142,10 +146,14 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
             self.cache.clone(),
             &self.settings.manifestref_key,
             self.settings.fetch_concurrency,
+            span,
         )
         .await
         .context("failed to fetch all release metadata")?;
 
+        span.log(|log| {
+            log.std().message("fetched release metadata");
+        });
         if releases.is_empty() {
             warn!(
                 "could not find any releases in {}/{}",
@@ -175,6 +183,7 @@ mod network_tests {
     use cincinnati::plugins::internal::graph_builder::commons::tests::common_init;
     use cincinnati::testing::{TestGraphBuilder, TestMetadata};
     use failure::{Fallible, ResultExt};
+    use rustracing_jaeger::span::Span;
     use std::collections::HashSet;
 
     #[test]
@@ -201,12 +210,16 @@ mod network_tests {
             None,
         )?);
 
+        let mut span = Span::inactive();
         let graph: cincinnati::Graph = {
             let mut graph_raw = runtime
-                .block_on(plugin.run_internal(InternalIO {
-                    graph: Default::default(),
-                    parameters: Default::default(),
-                }))?
+                .block_on(plugin.run_internal(
+                    InternalIO {
+                        graph: Default::default(),
+                        parameters: Default::default(),
+                    },
+                    &mut span,
+                ))?
                 .graph;
 
             // remove unwanted metadata

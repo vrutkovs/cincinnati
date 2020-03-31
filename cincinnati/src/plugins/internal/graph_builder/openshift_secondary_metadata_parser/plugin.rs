@@ -4,6 +4,9 @@ use self::cincinnati::plugins::internal::graph_builder::github_openshift_seconda
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
+
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 
 mod graph_data_model {
@@ -471,12 +474,27 @@ impl OpenshiftSecondaryMetadataParserPlugin {
 
 #[async_trait]
 impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
-    async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        mut io: InternalIO,
+        span: &mut Span,
+    ) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "secondary-metadata"));
+
         let data_dir = self.get_data_directory(&io);
 
         self.process_raw_metadata(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("metadata processed");
+        });
         self.process_blocked_edges(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("processed blocked edges");
+        });
         self.process_channels(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("processed channels");
+        });
 
         Ok(io)
     }
@@ -491,6 +509,8 @@ mod tests {
     use self::cincinnati::plugins::InternalIO;
     use self::cincinnati::plugins::InternalPlugin;
     use self::cincinnati::testing::compare_graphs_verbose;
+
+    use rustracing_jaeger::span::Span;
 
     use failure::{Fallible, ResultExt};
     use std::path::PathBuf;
@@ -546,16 +566,20 @@ mod tests {
 
         let graph_result = {
             // Run the plugin
+            let mut span = Span::inactive();
             let io = runtime
-                .block_on(plugin.run_internal(InternalIO {
-                    graph: graph_raw,
-                    parameters: Default::default(),
-                }))
+                .block_on(plugin.run_internal(
+                    InternalIO {
+                        graph: graph_raw,
+                        parameters: Default::default(),
+                    },
+                    &mut span,
+                ))
                 .context("Running plugin")?;
 
             // Run through the EdgeAddRemovePlugin to compare it with the control data
             runtime
-                .block_on(edge_add_remove_plugin.run_internal(io))
+                .block_on(edge_add_remove_plugin.run_internal(io, &mut span))
                 .context(
                     "Running plugin result with quay metadata through the EdgeEAddRemovePlugin",
                 )?
@@ -565,11 +589,15 @@ mod tests {
         // Run the graph with quay metadata through the EdgeAddRemovePlugin
         // which will serve as the expected graph
         let graph_expected = {
+            let mut span = Span::inactive();
             runtime
-                .block_on(edge_add_remove_plugin.run_internal(InternalIO {
-                    graph: graph_with_quay_metadata,
-                    parameters: Default::default(),
-                }))
+                .block_on(edge_add_remove_plugin.run_internal(
+                    InternalIO {
+                        graph: graph_with_quay_metadata,
+                        parameters: Default::default(),
+                    },
+                    &mut span,
+                ))
                 .context(
                     "Running fixture graph with quay metadata through the EdgeEAddRemovePlugin",
                 )?

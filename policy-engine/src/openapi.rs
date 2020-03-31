@@ -1,6 +1,7 @@
 use crate::AppState;
 use actix_web::HttpResponse;
 use openapiv3::{OpenAPI, ReferenceOr};
+
 use std::collections::HashSet;
 
 /// Template for policy-engine OpenAPIv3 document.
@@ -142,6 +143,7 @@ mod tests {
 
     #[test]
     fn graph_params_integration() -> Result<(), Box<dyn std::error::Error>> {
+        use rustracing_jaeger::Tracer;
         let mut runtime = common_init();
 
         // prepare and run the test-service
@@ -157,6 +159,7 @@ mod tests {
             mandatory_params: mandatory_params.clone(),
             path_prefix: path_prefix.clone(),
             plugins: Box::leak(Box::new([])),
+            tracer: Tracer::new(rustracing::sampler::NullSampler).0,
         });
         let resource =
             actix_web::web::resource(service_uri).route(actix_web::web::get().to(super::index));

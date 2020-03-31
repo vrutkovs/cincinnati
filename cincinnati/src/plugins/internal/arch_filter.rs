@@ -12,7 +12,10 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use commons::GraphError;
+
 use lazy_static::lazy_static;
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_ARCH_KEY: &str = "release.arch";
@@ -86,7 +89,12 @@ lazy_static! {
 
 #[async_trait]
 impl InternalPlugin for ArchFilterPlugin {
-    async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        internal_io: InternalIO,
+        span: &mut Span,
+    ) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "arch-filter"));
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
             self.default_arch.clone(),
@@ -161,6 +169,7 @@ mod tests {
     use cincinnati::testing::generate_custom_graph;
     use cincinnati::testing::TestMetadata;
     use commons::testing::init_runtime;
+    use rustracing_jaeger::span::Span;
 
     #[test]
     fn plugin_filters_by_arch_and_strips_suffixes() -> Fallible<()> {
@@ -227,13 +236,17 @@ mod tests {
             key_suffix: "arch".to_string(),
             default_arch: "amd64".to_string(),
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph.clone(),
-            parameters: [("arch", "arm64")]
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
-        });
+        let mut span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph.clone(),
+                parameters: [("arch", "arm64")]
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            },
+            &mut span,
+        );
 
         let processed_graph = runtime.block_on(future_processed_graph)?.graph;
 

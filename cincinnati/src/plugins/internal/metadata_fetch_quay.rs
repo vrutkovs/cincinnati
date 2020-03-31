@@ -9,6 +9,9 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::Span;
+
 pub static DEFAULT_QUAY_LABEL_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_QUAY_MANIFESTREF_KEY: &str = "io.openshift.upgrades.graph.release.manifestref";
 pub static DEFAULT_QUAY_REPOSITORY: &str = "openshift";
@@ -98,7 +101,8 @@ impl QuayMetadataFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "metadata-fetch-quay"));
         let (mut graph, parameters) = (io.graph, io.parameters);
 
         trace!("fetching metadata from quay labels...");
@@ -177,6 +181,7 @@ mod tests_net {
     use cincinnati::testing::{generate_custom_graph, TestMetadata};
     use cincinnati::MapImpl;
     use commons::testing::init_runtime;
+    use rustracing_jaeger::span::Span;
     use std::collections::HashMap;
 
     fn input_metadata_labels_test_annoated(manifestrefs: HashMap<usize, &str>) -> TestMetadata {
@@ -328,10 +333,14 @@ mod tests_net {
             )
             .expect("could not initialize the QuayMetadataPlugin"),
         );
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let mut span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &mut span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -388,10 +397,14 @@ mod tests_net {
             )
             .context("could not initialize the QuayMetadataPlugin")?,
         );
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let mut span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &mut span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)

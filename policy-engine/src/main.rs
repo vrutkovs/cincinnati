@@ -20,6 +20,8 @@ extern crate smart_default;
 extern crate structopt;
 #[macro_use]
 extern crate custom_debug_derive;
+#[macro_use]
+extern crate trackable;
 
 mod config;
 mod graph;
@@ -31,6 +33,9 @@ use commons::metrics::{self, RegistryWrapper};
 use failure::Error;
 use prometheus::{labels, opts, Counter, Registry};
 use std::collections::HashSet;
+
+use rustracing_jaeger::reporter::JaegerCompactReporter;
+use rustracing_jaeger::Tracer;
 
 #[allow(dead_code)]
 /// Build info
@@ -83,13 +88,27 @@ fn main() -> Result<(), Error> {
     .bind((settings.status_address, settings.status_port))?
     .run();
 
+    // Enable tracing
+    let (tracer, span_rx) = Tracer::new(rustracing::sampler::AllSampler);
+
     // Main service.
     let plugins = settings.validate_and_build_plugins(Some(registry))?;
     let state = AppState {
         mandatory_params: settings.mandatory_client_parameters.clone(),
         path_prefix: settings.path_prefix.clone(),
         plugins: Box::leak(Box::new(plugins)),
+        tracer: tracer,
     };
+
+    // Spawns a reporting thread at the initialization phase in your application
+    std::thread::spawn(move || {
+        let reporter = track_try_unwrap!(JaegerCompactReporter::new("policy-engine"));
+        while let Ok(span) = span_rx.recv() {
+            if reporter.report(&[span][..]).is_err() {
+                break;
+            }
+        }
+    });
 
     HttpServer::new(move || {
         let app_prefix = state.path_prefix.clone();
@@ -123,6 +142,8 @@ struct AppState {
     pub path_prefix: String,
     /// Policy plugins.
     pub plugins: &'static [BoxedPlugin],
+    /// Jaeger tracing
+    pub tracer: Tracer,
 }
 
 impl Default for AppState {
@@ -131,6 +152,7 @@ impl Default for AppState {
             plugins: Box::leak(Box::new([])),
             mandatory_params: HashSet::new(),
             path_prefix: String::new(),
+            tracer: Tracer::new(rustracing::sampler::NullSampler).0,
         }
     }
 }

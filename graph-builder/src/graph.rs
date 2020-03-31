@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use crate::built_info;
 use crate::config;
 use actix_web::{HttpRequest, HttpResponse};
@@ -23,10 +22,14 @@ use failure::Fallible;
 use lazy_static;
 pub use parking_lot::RwLock;
 use prometheus::{self, histogram_opts, labels, opts, Counter, Gauge, Histogram, IntGauge};
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::SpanContext;
+use rustracing_jaeger::Tracer;
 use serde_json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::thread;
+use trackable::{track, track_try_unwrap};
 
 lazy_static! {
     static ref GRAPH_FINAL_RELEASES: IntGauge = IntGauge::new(
@@ -98,6 +101,19 @@ pub async fn index(
     req: HttpRequest,
     app_data: actix_web::web::Data<State>,
 ) -> Result<HttpResponse, GraphError> {
+    let mut carrier: HashMap<String, String> = HashMap::new();
+    let headers = req.headers();
+    for (k, v) in headers {
+        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
+    }
+
+    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
+    let mut _span_builder = app_data.get_ref().tracer.span("index").child_of(&context);
+    for (k, v) in carrier {
+        _span_builder = _span_builder.tag(Tag::new(k, v))
+    }
+    let mut span = _span_builder.start();
+
     V1_GRAPH_INCOMING_REQS.inc();
 
     // Check that the client can accept JSON media type.
@@ -110,6 +126,11 @@ pub async fn index(
     let resp = HttpResponse::Ok()
         .content_type(CONTENT_TYPE)
         .body(app_data.json.read().clone());
+
+    span.log(|log| {
+        log.std().message("prepared the graph");
+    });
+
     Ok(resp)
 }
 
@@ -122,6 +143,7 @@ pub struct State {
     ready: Arc<RwLock<bool>>,
     plugins: &'static [BoxedPlugin],
     registry: &'static prometheus::Registry,
+    tracer: &'static Tracer,
 }
 
 impl State {
@@ -133,6 +155,7 @@ impl State {
         ready: Arc<RwLock<bool>>,
         plugins: &'static [BoxedPlugin],
         registry: &'static prometheus::Registry,
+        tracer: &'static Tracer,
     ) -> State {
         State {
             json,
@@ -141,6 +164,7 @@ impl State {
             ready,
             plugins,
             registry,
+            tracer,
         }
     }
 
@@ -191,6 +215,11 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
         debug!("graph update triggered");
         let scrape_timer = UPSTREAM_SCRAPES_DURATION.start_timer();
 
+        let carrier: HashMap<String, String> = HashMap::new();
+
+        let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
+        let mut span = state.tracer.span("scrape").child_of(&context).start();
+
         let scrape = cincinnati::plugins::process_blocking(
             state.plugins.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
@@ -199,6 +228,8 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
                 // the plugins used in the graph-builder don't expect any parameters yet
                 parameters: Default::default(),
             }),
+            &mut span,
+            &state.tracer,
             settings.scrape_timeout_secs,
         );
         UPSTREAM_SCRAPES.inc();
@@ -220,8 +251,15 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
                 continue;
             }
         };
+        span.log(|log| {
+            log.std().message("json marshalled");
+        });
 
         *state.json.write() = json_graph;
+
+        span.log(|log| {
+            log.std().message("state written");
+        });
 
         // Record scrape duration
         scrape_value = scrape_timer.stop_and_discard();
@@ -239,5 +277,8 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
         let nodes_count = internal_io.graph.releases_count();
         GRAPH_FINAL_RELEASES.set(nodes_count as i64);
         debug!("graph update completed, {} valid releases", nodes_count);
+        // span.log(|log| {
+        //     log.std().message("done");
+        // });
     }
 }

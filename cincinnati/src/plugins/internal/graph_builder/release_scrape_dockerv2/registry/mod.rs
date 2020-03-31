@@ -32,6 +32,8 @@ use std::string::String;
 use std::sync::Arc;
 use tar::Archive;
 
+use rustracing_jaeger::span::Span;
+
 /// Module for the release cache
 pub mod cache {
     use super::cincinnati::plugins::internal::graph_builder::release::Release;
@@ -198,6 +200,7 @@ pub async fn fetch_releases(
     cache: cache::Cache,
     manifestref_key: &str,
     concurrency: usize,
+    span: &mut Span,
 ) -> Result<Vec<cincinnati::plugins::internal::graph_builder::release::Release>, Error> {
     let authenticated_client = dkregistry::v2::Client::configure()
         .registry(&registry.host_port_string())
@@ -210,8 +213,15 @@ pub async fn fetch_releases(
         .await
         .map_err(|e| format_err!("{}", e))?;
 
+    span.log(|log| {
+        log.std().message("got authenticated_client");
+    });
+
     let authenticated_client_get_tags = authenticated_client.clone();
     let tags = Box::pin(get_tags(repo, &authenticated_client_get_tags).await);
+    span.log(|log| {
+        log.std().message("fetched tags from the client");
+    });
 
     let releases = {
         let estimated_releases = match tags.size_hint() {
@@ -292,6 +302,10 @@ pub async fn fetch_releases(
         }
     })
     .await?;
+
+    span.log(|log| {
+        log.std().message("processed tags");
+    });
 
     let releases = Arc::<
         FuturesMutex<Vec<cincinnati::plugins::internal::graph_builder::release::Release>>,
