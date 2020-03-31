@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use crate::built_info;
 use crate::config;
 use actix_web::{HttpRequest, HttpResponse};
@@ -23,7 +22,11 @@ use failure::Fallible;
 use lazy_static;
 pub use parking_lot::RwLock;
 use prometheus::{self, histogram_opts, labels, opts, Counter, Gauge, Histogram, IntGauge};
+use rustracing::tag::Tag;
+use rustracing_jaeger::span::SpanContext;
+use rustracing_jaeger::Tracer;
 use serde_json;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
@@ -98,6 +101,19 @@ pub async fn index(
     req: HttpRequest,
     app_data: actix_web::web::Data<State>,
 ) -> Result<HttpResponse, GraphError> {
+    let mut carrier: HashMap<String, String> = HashMap::new();
+    let headers = req.headers();
+    for (k, v) in headers {
+        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
+    }
+
+    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
+    let mut _span = app_data.get_ref().tracer.span("index").child_of(&context);
+    for (k, v) in carrier {
+        _span = _span.tag(Tag::new(k, v))
+    }
+    _span.start();
+
     V1_GRAPH_INCOMING_REQS.inc();
 
     // Check that the client can accept JSON media type.
@@ -122,6 +138,7 @@ pub struct State {
     ready: Arc<RwLock<bool>>,
     plugins: &'static [BoxedPlugin],
     registry: &'static prometheus::Registry,
+    tracer: Tracer,
 }
 
 impl State {
@@ -133,6 +150,7 @@ impl State {
         ready: Arc<RwLock<bool>>,
         plugins: &'static [BoxedPlugin],
         registry: &'static prometheus::Registry,
+        tracer: Tracer,
     ) -> State {
         State {
             json,
@@ -141,6 +159,7 @@ impl State {
             ready,
             plugins,
             registry,
+            tracer,
         }
     }
 
@@ -191,6 +210,11 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
         debug!("graph update triggered");
         let scrape_timer = UPSTREAM_SCRAPES_DURATION.start_timer();
 
+        let carrier: HashMap<String, String> = HashMap::new();
+
+        let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
+        let span = state.tracer.span("scrape").child_of(&context).start();
+
         let scrape = cincinnati::plugins::process(
             state.plugins.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
@@ -199,6 +223,8 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
                 // the plugins used in the graph-builder don't expect any parameters yet
                 parameters: Default::default(),
             }),
+            &span,
+            &state.tracer,
         )
         .await;
         UPSTREAM_SCRAPES.inc();

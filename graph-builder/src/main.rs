@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#[macro_use]
+extern crate trackable;
 
 use actix_web::{App, HttpServer};
 use commons::metrics::{self, HasRegistry};
@@ -21,6 +23,9 @@ use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
+
+use rustracing_jaeger::reporter::JaegerCompactReporter;
+use rustracing_jaeger::Tracer;
 
 fn main() -> Result<(), Error> {
     let sys = actix::System::new("graph-builder");
@@ -34,6 +39,9 @@ fn main() -> Result<(), Error> {
 
     let registry: prometheus::Registry =
         metrics::new_registry(Some(config::METRICS_PREFIX.to_string()))?;
+
+    // Enable tracing
+    let (tracer, span_rx) = Tracer::new(rustracing::sampler::AllSampler);
 
     let plugins = settings.validate_and_build_plugins(Some(&registry))?;
 
@@ -60,8 +68,19 @@ fn main() -> Result<(), Error> {
             ready,
             Box::leak(Box::new(plugins)),
             Box::leak(Box::new(registry)),
+            tracer,
         )
     };
+
+    // Spawns a reporting thread at the initialization phase in your application
+    std::thread::spawn(move || {
+        let reporter = track_try_unwrap!(JaegerCompactReporter::new("graph-builder"));
+        while let Ok(span) = span_rx.recv() {
+            if reporter.report(&[span][..]).is_err() {
+                break;
+            }
+        }
+    });
 
     // Graph scraper
     {
@@ -159,7 +178,16 @@ mod tests {
             metrics::new_registry(Some(config::METRICS_PREFIX.to_string())).unwrap(),
         ));
 
-        State::new(json_graph, HashSet::new(), live, ready, plugins, registry)
+        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
+        State::new(
+            json_graph,
+            HashSet::new(),
+            live,
+            ready,
+            plugins,
+            registry,
+            tracer,
+        )
     }
 
     #[test]

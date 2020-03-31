@@ -14,6 +14,8 @@ extern crate smart_default;
 extern crate structopt;
 #[macro_use]
 extern crate cincinnati;
+#[macro_use]
+extern crate trackable;
 
 pub mod config;
 pub mod graph;
