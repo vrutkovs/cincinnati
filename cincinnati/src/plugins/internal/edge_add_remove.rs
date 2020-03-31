@@ -1,9 +1,11 @@
 //! This plugin adds and removes Edges from Nodes based on metadata labels.
-
 use crate as cincinnati;
 
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
+
+use commons::tracing::get_tracer;
+use opentelemetry::api::{Span, Tracer};
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_REMOVE_ALL_EDGES_VALUE: &str = "*";
@@ -25,6 +27,10 @@ pub struct EdgeAddRemovePlugin {
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        get_tracer()
+            .get_active_span()
+            .update_name("edge_add_remove".to_string());
+
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
         self.remove_edges(&mut graph)?;

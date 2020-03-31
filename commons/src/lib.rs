@@ -16,11 +16,12 @@ pub use crate::config::MergeOptions;
 pub mod de;
 pub mod metrics;
 pub mod testing;
+pub mod tracing;
 
 mod errors;
 pub use errors::{register_metrics, GraphError, MISSING_APPSTATE_PANIC_MSG};
 
-use actix_web::http::header;
+use actix_web::http::{header, HeaderMap};
 use std::collections::HashSet;
 use url::form_urlencoded;
 
@@ -89,7 +90,7 @@ pub fn ensure_query_params(
 
 /// Make sure client requested a valid content type.
 pub fn ensure_content_type(
-    headers: &actix_web::http::HeaderMap,
+    headers: &HeaderMap,
     content_type: &'static str,
 ) -> Result<(), GraphError> {
     let content_json = header::HeaderValue::from_static(content_type);
@@ -104,7 +105,6 @@ pub fn ensure_content_type(
         Ok(())
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

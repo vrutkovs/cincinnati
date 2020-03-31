@@ -25,10 +25,13 @@ mod config;
 mod graph;
 mod openapi;
 
+use actix_service::Service;
 use actix_web::{middleware, App, HttpServer};
 use cincinnati::plugins::BoxedPlugin;
 use commons::metrics::{self, RegistryWrapper};
+use commons::tracing::{get_tracer, init_tracer, set_span_tags};
 use failure::Error;
+use opentelemetry::api::{trace::futures::Instrument, Tracer};
 use prometheus::{labels, opts, Counter, Registry};
 use std::collections::HashSet;
 
@@ -83,6 +86,9 @@ fn main() -> Result<(), Error> {
     .bind((settings.status_address, settings.status_port))?
     .run();
 
+    // Enable tracing
+    init_tracer("policy-engine")?;
+
     // Main service.
     let plugins = settings.validate_and_build_plugins(Some(registry))?;
     let state = AppState {
@@ -94,6 +100,11 @@ fn main() -> Result<(), Error> {
     HttpServer::new(move || {
         let app_prefix = state.path_prefix.clone();
         App::new()
+            .wrap_fn(|req, srv| {
+                let span = get_tracer().start("request", None);
+                set_span_tags(&req, &span);
+                srv.call(req).instrument(span)
+            })
             .app_data(actix_web::web::Data::<AppState>::new(state.clone()))
             .service(
                 actix_web::web::resource(&format!("{}/v1/graph", app_prefix))

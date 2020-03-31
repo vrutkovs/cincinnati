@@ -5,6 +5,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use commons::tracing::get_tracer;
+use opentelemetry::api::{Span, Tracer};
 /// Prefix for the metadata key operations.
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 
@@ -38,6 +40,10 @@ impl NodeRemovePlugin {
 #[async_trait]
 impl InternalPlugin for NodeRemovePlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        get_tracer()
+            .get_active_span()
+            .update_name("node-remove".to_string());
+
         let mut graph = io.graph;
         let key_suffix = "release.remove";
 
