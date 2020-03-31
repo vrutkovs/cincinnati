@@ -19,6 +19,9 @@ use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
+use rustracing_jaeger::span::Span;
+use rustracing_jaeger::Tracer;
+
 pub mod prelude {
     use crate as cincinnati;
 
@@ -349,7 +352,12 @@ where
 ///
 /// This function automatically converts between the different IO representations
 /// if necessary.
-pub async fn process<T>(plugins: T, initial_io: PluginIO) -> Fallible<InternalIO>
+pub async fn process<T>(
+    plugins: T,
+    initial_io: PluginIO,
+    context: &Span,
+    tracer: &Tracer,
+) -> Fallible<InternalIO>
 where
     T: Iterator<Item = &'static BoxedPlugin>,
     T: Sync + Send,
@@ -358,6 +366,7 @@ where
     let mut io = initial_io;
 
     for next_plugin in plugins {
+        tracer.span("plugin").child_of(context).start();
         io = next_plugin.run(io).await?;
     }
 
@@ -455,6 +464,9 @@ mod tests {
 
     #[test]
     fn process_plugins_roundtrip_external_internal() -> Fallible<()> {
+        use rustracing_jaeger::span::SpanContext;
+        use rustracing_jaeger::Tracer;
+        use std::collections::HashMap;
         let mut runtime = commons::testing::init_runtime()?;
 
         lazy_static! {
@@ -487,9 +499,16 @@ mod tests {
             .collect(),
         };
 
+        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
+        let carrier: HashMap<String, String> = HashMap::new();
+        let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
+        let span = tracer.span("plugin").child_of(&context).start();
+
         let plugins_future = super::process(
             PLUGINS.iter(),
             PluginIO::InternalIO(initial_internalio.clone()),
+            &span,
+            &tracer,
         );
 
         let result_internalio: InternalIO = runtime.block_on(plugins_future)?;
@@ -501,6 +520,9 @@ mod tests {
 
     #[test]
     fn process_plugins_loop() -> Fallible<()> {
+        use rustracing_jaeger::span::SpanContext;
+        use rustracing_jaeger::Tracer;
+        use std::collections::HashMap;
         let mut runtime = commons::testing::init_runtime()?;
 
         lazy_static! {
@@ -535,10 +557,16 @@ mod tests {
                 .cloned()
                 .collect(),
             };
-
+            let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
+            let carrier: HashMap<String, String> = HashMap::new();
+            let context =
+                track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
+            let span = tracer.span("plugin").child_of(&context).start();
             let plugins_future = process(
                 PLUGINS.iter(),
                 PluginIO::InternalIO(initial_internalio.clone()),
+                &span,
+                &tracer,
             );
 
             let result_internalio: InternalIO = runtime.block_on(plugins_future)?;

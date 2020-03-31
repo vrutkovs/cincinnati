@@ -1,5 +1,4 @@
 //! This plugin adds and removes Edges from Nodes based on metadata labels.
-
 use crate as cincinnati;
 
 use self::cincinnati::plugins::prelude::*;
@@ -820,6 +819,9 @@ mod tests {
 
     #[test]
     fn edge_remove_bug() -> Fallible<()> {
+        use rustracing_jaeger::span::SpanContext;
+        use rustracing_jaeger::Tracer;
+        use std::collections::HashMap;
         let mut runtime = init_runtime()?;
 
         lazy_static::lazy_static! {
@@ -843,12 +845,19 @@ mod tests {
         )
         .unwrap();
 
+        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
+        let carrier: HashMap<String, String> = HashMap::new();
+        let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
+        let span = tracer.span("edge-add-remove").child_of(&context).start();
+
         let process_result = cincinnati::plugins::process(
             PLUGINS.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
                 graph: input_graph.clone(),
                 parameters: Default::default(),
             }),
+            &span,
+            &tracer,
         );
 
         let graph = runtime.block_on(process_result)?.graph;

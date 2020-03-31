@@ -9,7 +9,8 @@ use commons::{self, GraphError};
 use failure::Fallible;
 use prometheus::{histogram_opts, Counter, Histogram, Registry};
 use rustracing::tag::Tag;
-use rustracing_jaeger::span::SpanContext;
+use rustracing_jaeger::span::{Span, SpanContext};
+use rustracing_jaeger::Tracer;
 use serde_json;
 use std::collections::HashMap;
 
@@ -47,12 +48,13 @@ pub(crate) async fn index(
         carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
     }
 
+    let tracer = &app_data.get_ref().tracer;
     let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-    let mut _span = app_data.get_ref().tracer.span("index").child_of(&context);
+    let mut _span = tracer.span("index").child_of(&context);
     for (k, v) in carrier {
         _span = _span.tag(Tag::new(k, v))
     }
-    _span.start();
+    let span = _span.start();
 
     V1_GRAPH_INCOMING_REQS.inc();
 
@@ -69,7 +71,7 @@ pub(crate) async fn index(
 
     let timer = V1_GRAPH_SERVE_HIST.start_timer();
 
-    let response = process_plugins(app_data.plugins.iter(), plugin_params)
+    let response = process_plugins(app_data.plugins.iter(), plugin_params, &span, &tracer)
         .await
         .map_err(|e| {
             error!(
@@ -90,6 +92,8 @@ pub(crate) async fn index(
 async fn process_plugins<P>(
     plugins: P,
     plugin_params: HashMap<String, String>,
+    context: &Span,
+    tracer: &Tracer,
 ) -> Result<HttpResponse, GraphError>
 where
     P: std::iter::Iterator<Item = &'static BoxedPlugin>,
@@ -101,6 +105,8 @@ where
             graph: Default::default(),
             parameters: plugin_params,
         }),
+        context,
+        tracer,
     )
     .await
     .map_err(|e| match e.downcast::<GraphError>() {

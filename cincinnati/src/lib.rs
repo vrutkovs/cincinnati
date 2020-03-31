@@ -21,6 +21,9 @@ extern crate serde_derive;
 #[macro_use]
 pub mod plugins;
 
+#[macro_use]
+extern crate trackable;
+
 use daggy::petgraph::visit::{IntoNodeReferences, NodeRef};
 use daggy::{Dag, EdgeIndex, Walker};
 use failure::{Error, Fallible};
