@@ -14,6 +14,7 @@ use failure::{Fallible, ResultExt};
 use prometheus::{histogram_opts, Counter, Histogram};
 use reqwest;
 use reqwest::header::{HeaderValue, ACCEPT};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 /// Default URL to upstream graph provider.
@@ -110,7 +111,8 @@ impl CincinnatiGraphFetchPlugin {
 }
 
 impl CincinnatiGraphFetchPlugin {
-    async fn do_run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
+    async fn do_run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "graph-fetch"));
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();
         let timer = self.fetch_duration.start_timer();

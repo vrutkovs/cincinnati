@@ -14,6 +14,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 use commons::GraphError;
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -104,9 +105,10 @@ impl InternalPlugin for ArchFilterPlugin {
     async fn run_internal(
         self: &Self,
         internal_io: InternalIO,
-        _: &mut Span,
+        span: &mut Span,
     ) -> Fallible<InternalIO> {
         let timer = ARCH_FILTER_DURATION.start_timer();
+        span.set_tag(|| Tag::new("name", "arch-filter"));
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
             self.default_arch.clone(),

@@ -7,6 +7,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 /// Prefix for the metadata key operations.
@@ -54,8 +55,10 @@ impl NodeRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for NodeRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
         let timer = NODE_REMOVE_DURATION.start_timer();
+
+        span.set_tag(|| Tag::new("name", "node-remove"));
 
         let mut graph = io.graph;
         let key_suffix = "release.remove";

@@ -10,6 +10,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 use commons::GraphError;
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -71,9 +72,10 @@ impl InternalPlugin for ChannelFilterPlugin {
     async fn run_internal(
         self: &Self,
         internal_io: InternalIO,
-        _: &mut Span,
+        span: &mut Span,
     ) -> Fallible<InternalIO> {
         let timer = CHANNEL_FILTER_DURATION.start_timer();
+        span.set_tag(|| Tag::new("name", "channel-filter"));
         let channel = get_multiple_values!(internal_io.parameters, "channel")
             .map_err(|e| GraphError::MissingParams(vec![e.to_string()]))?
             .clone();

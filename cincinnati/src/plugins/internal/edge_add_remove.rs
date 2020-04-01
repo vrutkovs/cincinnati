@@ -6,6 +6,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -46,8 +47,9 @@ impl PluginSettings for EdgeAddRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
         let timer = EDGE_ADD_REMOVE_DURATION.start_timer();
+        span.set_tag(|| Tag::new("name", "edge-add-remove"));
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
         self.remove_edges(&mut graph)?;

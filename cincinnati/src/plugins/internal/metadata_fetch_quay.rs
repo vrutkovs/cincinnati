@@ -11,6 +11,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_QUAY_LABEL_FILTER: &str = "io.openshift.upgrades.graph";
@@ -115,8 +116,9 @@ impl QuayMetadataFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
         let timer = FETCH_QUAY_METADATA_DURATION.start_timer();
+        span.set_tag(|| Tag::new("name", "metadata-fetch-quay"));
         let (mut graph, parameters) = (io.graph, io.parameters);
 
         trace!("fetching metadata from quay labels...");
