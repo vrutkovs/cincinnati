@@ -101,7 +101,11 @@ lazy_static! {
 
 #[async_trait]
 impl InternalPlugin for ArchFilterPlugin {
-    async fn run_internal(self: &Self, internal_io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        internal_io: InternalIO,
+        _: &mut Span,
+    ) -> Fallible<InternalIO> {
         let timer = ARCH_FILTER_DURATION.start_timer();
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
@@ -244,7 +248,7 @@ mod tests {
             key_suffix: "arch".to_string(),
             default_arch: "amd64".to_string(),
         });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph.clone(),
@@ -253,7 +257,7 @@ mod tests {
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime.block_on(future_processed_graph)?.graph;

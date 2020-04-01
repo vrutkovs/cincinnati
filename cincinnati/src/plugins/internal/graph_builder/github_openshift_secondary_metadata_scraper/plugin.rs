@@ -7,6 +7,7 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 use tokio::sync::Mutex as FuturesMutex;
 
@@ -456,8 +457,13 @@ impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
 
 #[async_trait]
 impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
-    async fn run_internal(self: &Self, mut io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        mut io: InternalIO,
+        span: &mut Span,
+    ) -> Fallible<InternalIO> {
         let timer = GITHUB_SCRAPE_DURATION.start_timer();
+        span.set_tag(|| Tag::new("name", "github-scraper"));
         io.parameters.insert(
             GRAPH_DATA_DIR_PARAM_KEY.to_string(),
             self.data_dir

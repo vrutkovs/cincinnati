@@ -6,6 +6,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -488,7 +489,12 @@ impl OpenshiftSecondaryMetadataParserPlugin {
 
 #[async_trait]
 impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
-    async fn run_internal(self: &Self, mut io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(
+        self: &Self,
+        mut io: InternalIO,
+        span: &mut Span,
+    ) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "secondary-metadata"));
         let timer = SECONDARY_METADATA_PARSER_DURATION.start_timer();
         let data_dir = self.get_data_directory(&io);
 
@@ -567,20 +573,20 @@ mod tests {
 
         let graph_result = {
             // Run the plugin
-            let span = Span::inactive();
+            let mut span = Span::inactive();
             let io = runtime
                 .block_on(plugin.run_internal(
                     InternalIO {
                         graph: graph_raw,
                         parameters: Default::default(),
                     },
-                    &span,
+                    &mut span,
                 ))
                 .context("Running plugin")?;
 
             // Run through the EdgeAddRemovePlugin to compare it with the control data
             runtime
-                .block_on(edge_add_remove_plugin.run_internal(io, &span))
+                .block_on(edge_add_remove_plugin.run_internal(io, &mut span))
                 .context(
                     "Running plugin result with quay metadata through the EdgeEAddRemovePlugin",
                 )?
@@ -590,14 +596,14 @@ mod tests {
         // Run the graph with quay metadata through the EdgeAddRemovePlugin
         // which will serve as the expected graph
         let graph_expected = {
-            let span = Span::inactive();
+            let mut span = Span::inactive();
             runtime
                 .block_on(edge_add_remove_plugin.run_internal(
                     InternalIO {
                         graph: graph_with_quay_metadata,
                         parameters: Default::default(),
                     },
-                    &span,
+                    &mut span,
                 ))
                 .context(
                     "Running fixture graph with quay metadata through the EdgeEAddRemovePlugin",

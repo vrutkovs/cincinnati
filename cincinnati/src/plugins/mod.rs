@@ -126,13 +126,13 @@ where
     T: TryInto<PluginIO> + TryFrom<PluginIO>,
     T: Sync + Send,
 {
-    async fn run(self: &Self, t: T, s: &Span) -> Fallible<T>;
+    async fn run(self: &Self, t: T, s: &mut Span) -> Fallible<T>;
 }
 
 /// Trait to be implemented by internal plugins with their native IO type
 #[async_trait]
 pub trait InternalPlugin {
-    async fn run_internal(self: &Self, input: InternalIO, s: &Span) -> Fallible<InternalIO>;
+    async fn run_internal(self: &Self, input: InternalIO, s: &mut Span) -> Fallible<InternalIO>;
 }
 
 /// Trait to be implemented by external plugins with its native IO type
@@ -144,7 +144,7 @@ pub trait ExternalPlugin
 where
     Self: Debug,
 {
-    async fn run_external(self: &Self, input: ExternalIO, span: &Span) -> Fallible<ExternalIO>;
+    async fn run_external(self: &Self, input: ExternalIO, span: &mut Span) -> Fallible<ExternalIO>;
 }
 
 /// Convert from InternalIO to PluginIO
@@ -326,7 +326,7 @@ where
     T: InternalPlugin,
     T: Sync + Send + Debug,
 {
-    async fn run(self: &Self, plugin_io: PluginIO, span: &Span) -> Fallible<PluginIO> {
+    async fn run(self: &Self, plugin_io: PluginIO, span: &mut Span) -> Fallible<PluginIO> {
         let internal_io: InternalIO = plugin_io.try_into()?;
 
         Ok(self.0.run_internal(internal_io, span).await?.into())
@@ -341,7 +341,7 @@ where
     T: ExternalPlugin,
     T: Sync + Send + Debug,
 {
-    async fn run(self: &Self, plugin_io: PluginIO, span: &Span) -> Fallible<PluginIO> {
+    async fn run(self: &Self, plugin_io: PluginIO, span: &mut Span) -> Fallible<PluginIO> {
         let external_io: ExternalIO = plugin_io.try_into()?;
 
         Ok(self.0.run_external(external_io, span).await?.into())
@@ -355,7 +355,7 @@ where
 pub async fn process<T>(
     plugins: T,
     initial_io: PluginIO,
-    context: &Span,
+    context: &mut Span,
     tracer: &Tracer,
 ) -> Fallible<InternalIO>
 where
@@ -366,8 +366,8 @@ where
     let mut io = initial_io;
 
     for next_plugin in plugins {
-        let _child_span = tracer.span("plugin").child_of(context).start();
-        io = next_plugin.run(io, &_child_span).await?;
+        let mut _child_span = tracer.span("plugin").child_of(context).start();
+        io = next_plugin.run(io, &mut _child_span).await?;
     }
 
     io.try_into()
@@ -426,7 +426,11 @@ mod tests {
     }
     #[async_trait]
     impl InternalPlugin for TestInternalPlugin {
-        async fn run_internal(self: &Self, mut io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+        async fn run_internal(
+            self: &Self,
+            mut io: InternalIO,
+            _: &mut Span,
+        ) -> Fallible<InternalIO> {
             self.counter.fetch_add(1, Ordering::SeqCst);
             let counter = self.counter.load(Ordering::SeqCst);
 
@@ -442,7 +446,7 @@ mod tests {
     }
     #[async_trait]
     impl Plugin<InternalIO> for TestInternalPlugin {
-        async fn run(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+        async fn run(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
             Ok(io)
         }
     }
@@ -451,13 +455,13 @@ mod tests {
     struct TestExternalPlugin {}
     #[async_trait]
     impl ExternalPlugin for TestExternalPlugin {
-        async fn run_external(self: &Self, io: ExternalIO, _: &Span) -> Fallible<ExternalIO> {
+        async fn run_external(self: &Self, io: ExternalIO, _: &mut Span) -> Fallible<ExternalIO> {
             Ok(io)
         }
     }
     #[async_trait]
     impl Plugin<ExternalIO> for TestExternalPlugin {
-        async fn run(self: &Self, io: ExternalIO, _: &Span) -> Fallible<ExternalIO> {
+        async fn run(self: &Self, io: ExternalIO, _: &mut Span) -> Fallible<ExternalIO> {
             Ok(io)
         }
     }
@@ -502,12 +506,12 @@ mod tests {
         let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
         let carrier: HashMap<String, String> = HashMap::new();
         let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
-        let span = tracer.span("plugin").child_of(&context).start();
+        let mut span = tracer.span("plugin").child_of(&context).start();
 
         let plugins_future = super::process(
             PLUGINS.iter(),
             PluginIO::InternalIO(initial_internalio.clone()),
-            &span,
+            &mut span,
             &tracer,
         );
 
@@ -561,11 +565,11 @@ mod tests {
             let carrier: HashMap<String, String> = HashMap::new();
             let context =
                 track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
-            let span = tracer.span("plugin").child_of(&context).start();
+            let mut span = tracer.span("plugin").child_of(&context).start();
             let plugins_future = process(
                 PLUGINS.iter(),
                 PluginIO::InternalIO(initial_internalio.clone()),
-                &span,
+                &mut span,
                 &tracer,
             );
 

@@ -57,7 +57,7 @@ pub(crate) async fn index(
     }
     // Tracing: keep query_string as a tag
     _span = _span.tag(Tag::new("query_string", query_string));
-    let span = _span.start();
+    let mut span = _span.start();
 
     V1_GRAPH_INCOMING_REQS.inc();
 
@@ -74,7 +74,7 @@ pub(crate) async fn index(
 
     let timer = V1_GRAPH_SERVE_HIST.start_timer();
 
-    let response = process_plugins(app_data.plugins.iter(), plugin_params, &span, &tracer)
+    let response = process_plugins(app_data.plugins.iter(), plugin_params, &mut span, &tracer)
         .await
         .map_err(|e| {
             error!(
@@ -95,7 +95,7 @@ pub(crate) async fn index(
 async fn process_plugins<P>(
     plugins: P,
     plugin_params: HashMap<String, String>,
-    context: &Span,
+    context: &mut Span,
     tracer: &Tracer,
 ) -> Result<HttpResponse, GraphError>
 where

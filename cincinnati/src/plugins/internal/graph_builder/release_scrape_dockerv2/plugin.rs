@@ -6,6 +6,7 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use prometheus::{histogram_opts, Histogram, IntGauge};
+use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 use std::convert::TryInto;
 
@@ -146,7 +147,8 @@ impl ReleaseScrapeDockerv2Plugin {
 
 #[async_trait]
 impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
+        span.set_tag(|| Tag::new("name", "docker-scraper"));
         let timer = self.scrape_docker_duration.start_timer();
         let releases = registry::fetch_releases(
             &self.registry,

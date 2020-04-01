@@ -115,7 +115,7 @@ impl QuayMetadataFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
         let timer = FETCH_QUAY_METADATA_DURATION.start_timer();
         let (mut graph, parameters) = (io.graph, io.parameters);
 

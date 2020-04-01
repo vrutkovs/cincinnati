@@ -54,7 +54,7 @@ impl NodeRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for NodeRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
         let timer = NODE_REMOVE_DURATION.start_timer();
 
         let mut graph = io.graph;
@@ -135,13 +135,13 @@ mod tests {
         };
 
         let plugin = Box::new(NodeRemovePlugin { key_prefix });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime

@@ -46,7 +46,7 @@ impl PluginSettings for EdgeAddRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, _: &mut Span) -> Fallible<InternalIO> {
         let timer = EDGE_ADD_REMOVE_DURATION.start_timer();
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
@@ -395,13 +395,13 @@ mod tests {
 
             ..Default::default()
         });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph.clone(),
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime
@@ -454,13 +454,13 @@ mod tests {
 
             ..Default::default()
         });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime
@@ -522,13 +522,13 @@ mod tests {
 
             ..Default::default()
         });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime
@@ -578,13 +578,13 @@ mod tests {
 
             ..Default::default()
         });
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime
@@ -638,13 +638,13 @@ mod tests {
             ..Default::default()
         });
 
-        let span = Span::inactive();
+        let mut span = Span::inactive();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
                 parameters: Default::default(),
             },
-            &span,
+            &mut span,
         );
 
         let processed_graph = runtime
@@ -693,13 +693,13 @@ mod tests {
 
                     ..Default::default()
                 });
-                let span = Span::inactive();
+                let mut span = Span::inactive();
                 let future_processed_graph = plugin.run_internal(
                     InternalIO {
                         graph: input_graph.clone(),
                         parameters: Default::default(),
                     },
-                    &span,
+                    &mut span,
                 );
 
                 let processed_graph = runtime.block_on(future_processed_graph)?.graph;
@@ -873,7 +873,7 @@ mod tests {
         let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
         let carrier: HashMap<String, String> = HashMap::new();
         let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier)).unwrap();
-        let span = tracer.span("edge-add-remove").child_of(&context).start();
+        let mut span = tracer.span("edge-add-remove").child_of(&context).start();
 
         let process_result = cincinnati::plugins::process(
             PLUGINS.iter(),
@@ -881,7 +881,7 @@ mod tests {
                 graph: input_graph.clone(),
                 parameters: Default::default(),
             }),
-            &span,
+            &mut span,
             &tracer,
         );
 
