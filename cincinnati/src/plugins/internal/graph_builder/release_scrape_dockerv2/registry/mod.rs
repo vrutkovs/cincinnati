@@ -32,6 +32,8 @@ use std::string::String;
 use std::sync::Arc;
 use tar::Archive;
 
+use rustracing_jaeger::span::Span;
+
 /// Module for the release cache
 pub mod cache {
     use super::cincinnati::plugins::internal::graph_builder::release::Release;
@@ -198,7 +200,11 @@ pub async fn fetch_releases(
     cache: cache::Cache,
     manifestref_key: &str,
     concurrency: usize,
+    span: &mut Span,
 ) -> Result<Vec<cincinnati::plugins::internal::graph_builder::release::Release>, Error> {
+    span.log(|log| {
+        log.std().message("fetch_releases: start");
+    });
     let authenticated_client = dkregistry::v2::Client::configure()
         .registry(&registry.host_port_string())
         .insecure_registry(registry.insecure)
@@ -210,8 +216,19 @@ pub async fn fetch_releases(
         .await
         .map_err(|e| format_err!("{}", e))?;
 
+    span.log(|log| {
+        log.std().message("fetch_releases: authenticated_client");
+    });
+
     let authenticated_client_get_tags = authenticated_client.clone();
+    span.log(|log| {
+        log.std()
+            .message("fetch_releases: authenticated_client_get_tags");
+    });
     let tags = Box::pin(get_tags(repo, &authenticated_client_get_tags).await);
+    span.log(|log| {
+        log.std().message("fetch_releases: tags");
+    });
 
     let releases = {
         let estimated_releases = match tags.size_hint() {
@@ -220,6 +237,9 @@ pub async fn fetch_releases(
         };
         Arc::new(FuturesMutex::new(Vec::with_capacity(estimated_releases)))
     };
+    span.log(|log| {
+        log.std().message("fetch_releases: releases");
+    });
 
     tags.try_for_each_concurrent(concurrency, |tag| {
         let authenticated_client = authenticated_client.clone();
@@ -293,11 +313,19 @@ pub async fn fetch_releases(
     })
     .await?;
 
+    span.log(|log| {
+        log.std().message("fetch_releases: tags processed");
+    });
+
     let releases = Arc::<
         FuturesMutex<Vec<cincinnati::plugins::internal::graph_builder::release::Release>>,
     >::try_unwrap(releases)
     .map_err(|_| format_err!("Unwrapping the shared Releases vector. This must not fail."))?
     .into_inner();
+
+    span.log(|log| {
+        log.std().message("fetch_releases: releases");
+    });
 
     Ok(releases)
 }

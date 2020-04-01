@@ -158,6 +158,7 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
             self.cache.clone(),
             &self.settings.manifestref_key,
             self.settings.fetch_concurrency,
+            span,
         )
         .await
         .context("failed to fetch all release metadata")?;
