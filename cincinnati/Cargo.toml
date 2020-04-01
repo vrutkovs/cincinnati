@@ -32,7 +32,7 @@ async-trait = "^0.1"
 tempfile = "^3.1.0"
 flate2 = "^1.0.1"
 tar = "^0.4.16"
-dkregistry = { git = "https://github.com/vrutkovs/dkregistry-rs.git", rev = "a27e41bfaeb9b91e29d22b7537882b58b8154b43" }
+dkregistry = { git = "https://github.com/vrutkovs/dkregistry-rs.git", rev = "32796d73786b8849c4cb539929bbe556d2b2677b" }
 itertools = "^0.8.2"
 serde_yaml = "^0.8.11"
 prettydiff = { version = "0.3.1", optional = true }

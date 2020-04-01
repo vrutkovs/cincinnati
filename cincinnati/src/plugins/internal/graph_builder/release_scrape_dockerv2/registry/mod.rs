@@ -278,7 +278,7 @@ pub async fn fetch_releases(
         async move {
             trace!("[{}] Fetching release", tag);
             let (tag, manifest, manifestref) =
-                get_manifest_and_ref(tag, repo.to_owned(), &registry_cache, &authenticated_client)
+                get_manifest_and_ref(tag, repo.to_owned(), registry_cache, &authenticated_client)
                     .await?;
 
             // Try to read the architecture from the manifest
@@ -442,17 +442,38 @@ async fn get_tags<'a, 'b: 'a>(
 async fn get_manifest_and_ref(
     tag: String,
     repo: String,
-    cache: &registry_cache::Cache,
+    cache: registry_cache::Cache,
     authenticated_client: &dkregistry::v2::Client,
 ) -> Result<(String, dkregistry::v2::manifest::Manifest, String), failure::Error> {
+    let (tag, repo) = (tag.clone(), repo.clone());
     trace!("[{}] Processing {}", &tag, &repo);
-    let (manifest, manifestref) = authenticated_client
+
+    let manifestref = authenticated_client
+        .get_manifestref(&repo, &tag)
+        .map_err(|e| format_err!("{}", e))
+        .await?
+        .ok_or_else(|| format_err!("no manifestref found for {}:{}", &repo, &tag))?;
+
+    if let Some((cached_manifestref, manifest)) = cache.read().await.get(&tag) {
+        if cached_manifestref == &manifestref {
+            trace!(
+                "[{}] Using cached manifest metadata for manifestref {}",
+                &tag,
+                &manifestref
+            );
+            return Ok((tag, (*manifest).clone(), manifestref.clone()));
+        }
+    }
+
+    let (manifest, _) = authenticated_client
         .get_manifest_and_ref(&repo, &tag)
         .map_err(|e| format_err!("{}", e))
         .await?;
 
-    let manifestref =
-        manifestref.ok_or_else(|| format_err!("no manifestref found for {}:{}", &repo, &tag))?;
+    cache
+        .write()
+        .await
+        .insert(tag.clone(), (manifestref.clone(), manifest.clone()));
 
     Ok((tag, manifest, manifestref))
 }
