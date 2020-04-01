@@ -162,6 +162,9 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
         .await
         .context("failed to fetch all release metadata")?;
 
+        span.log(|log| {
+            log.std().message("fetched release metadata");
+        });
         if releases.is_empty() {
             warn!(
                 "could not find any releases in {}/{}",

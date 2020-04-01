@@ -478,6 +478,10 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
             .await
             .context("Checking for new commit")?;
 
+        span.log(|log| {
+            log.std().message("checked for new commit");
+        });
+
         if should_update {
             let (commit, blob) = self
                 .download_wanted()

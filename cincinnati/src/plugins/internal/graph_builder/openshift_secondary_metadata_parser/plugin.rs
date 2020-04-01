@@ -499,8 +499,17 @@ impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
         let data_dir = self.get_data_directory(&io);
 
         self.process_raw_metadata(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("metadata processed");
+        });
         self.process_blocked_edges(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("processed blocked edges");
+        });
         self.process_channels(&mut io.graph, &data_dir).await?;
+        span.log(|log| {
+            log.std().message("processed channels");
+        });
 
         timer.observe_duration();
         Ok(io)
