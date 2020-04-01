@@ -126,13 +126,13 @@ where
     T: TryInto<PluginIO> + TryFrom<PluginIO>,
     T: Sync + Send,
 {
-    async fn run(self: &Self, t: T) -> Fallible<T>;
+    async fn run(self: &Self, t: T, s: &Span) -> Fallible<T>;
 }
 
 /// Trait to be implemented by internal plugins with their native IO type
 #[async_trait]
 pub trait InternalPlugin {
-    async fn run_internal(self: &Self, input: InternalIO) -> Fallible<InternalIO>;
+    async fn run_internal(self: &Self, input: InternalIO, s: &Span) -> Fallible<InternalIO>;
 }
 
 /// Trait to be implemented by external plugins with its native IO type
@@ -144,7 +144,7 @@ pub trait ExternalPlugin
 where
     Self: Debug,
 {
-    async fn run_external(self: &Self, input: ExternalIO) -> Fallible<ExternalIO>;
+    async fn run_external(self: &Self, input: ExternalIO, span: &Span) -> Fallible<ExternalIO>;
 }
 
 /// Convert from InternalIO to PluginIO
@@ -326,10 +326,10 @@ where
     T: InternalPlugin,
     T: Sync + Send + Debug,
 {
-    async fn run(self: &Self, plugin_io: PluginIO) -> Fallible<PluginIO> {
+    async fn run(self: &Self, plugin_io: PluginIO, span: &Span) -> Fallible<PluginIO> {
         let internal_io: InternalIO = plugin_io.try_into()?;
 
-        Ok(self.0.run_internal(internal_io).await?.into())
+        Ok(self.0.run_internal(internal_io, span).await?.into())
     }
 }
 
@@ -341,10 +341,10 @@ where
     T: ExternalPlugin,
     T: Sync + Send + Debug,
 {
-    async fn run(self: &Self, plugin_io: PluginIO) -> Fallible<PluginIO> {
+    async fn run(self: &Self, plugin_io: PluginIO, span: &Span) -> Fallible<PluginIO> {
         let external_io: ExternalIO = plugin_io.try_into()?;
 
-        Ok(self.0.run_external(external_io).await?.into())
+        Ok(self.0.run_external(external_io, span).await?.into())
     }
 }
 
@@ -367,7 +367,7 @@ where
 
     for next_plugin in plugins {
         let _child_span = tracer.span("plugin").child_of(context).start();
-        io = next_plugin.run(io).await?;
+        io = next_plugin.run(io, &_child_span).await?;
     }
 
     io.try_into()
@@ -426,7 +426,7 @@ mod tests {
     }
     #[async_trait]
     impl InternalPlugin for TestInternalPlugin {
-        async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
+        async fn run_internal(self: &Self, mut io: InternalIO, _: &Span) -> Fallible<InternalIO> {
             self.counter.fetch_add(1, Ordering::SeqCst);
             let counter = self.counter.load(Ordering::SeqCst);
 
@@ -442,7 +442,7 @@ mod tests {
     }
     #[async_trait]
     impl Plugin<InternalIO> for TestInternalPlugin {
-        async fn run(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        async fn run(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
             Ok(io)
         }
     }
@@ -451,13 +451,13 @@ mod tests {
     struct TestExternalPlugin {}
     #[async_trait]
     impl ExternalPlugin for TestExternalPlugin {
-        async fn run_external(self: &Self, io: ExternalIO) -> Fallible<ExternalIO> {
+        async fn run_external(self: &Self, io: ExternalIO, _: &Span) -> Fallible<ExternalIO> {
             Ok(io)
         }
     }
     #[async_trait]
     impl Plugin<ExternalIO> for TestExternalPlugin {
-        async fn run(self: &Self, io: ExternalIO) -> Fallible<ExternalIO> {
+        async fn run(self: &Self, io: ExternalIO, _: &Span) -> Fallible<ExternalIO> {
             Ok(io)
         }
     }

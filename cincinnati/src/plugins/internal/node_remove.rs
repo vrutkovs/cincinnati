@@ -7,6 +7,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing_jaeger::span::Span;
 
 /// Prefix for the metadata key operations.
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -53,7 +54,7 @@ impl NodeRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for NodeRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
         let timer = NODE_REMOVE_DURATION.start_timer();
 
         let mut graph = io.graph;
@@ -134,10 +135,14 @@ mod tests {
         };
 
         let plugin = Box::new(NodeRemovePlugin { key_prefix });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)

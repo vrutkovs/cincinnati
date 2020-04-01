@@ -14,6 +14,7 @@ use failure::{Fallible, ResultExt};
 use prometheus::{histogram_opts, Counter, Histogram};
 use reqwest;
 use reqwest::header::{HeaderValue, ACCEPT};
+use rustracing_jaeger::span::Span;
 
 /// Default URL to upstream graph provider.
 pub static DEFAULT_UPSTREAM_URL: &str = "http://localhost:8080/v1/graph";
@@ -109,7 +110,7 @@ impl CincinnatiGraphFetchPlugin {
 }
 
 impl CincinnatiGraphFetchPlugin {
-    async fn do_run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn do_run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();
         let timer = self.fetch_duration.start_timer();
@@ -145,8 +146,8 @@ impl CincinnatiGraphFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for CincinnatiGraphFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        self.do_run_internal(io)
+    async fn run_internal(self: &Self, io: InternalIO, span: &Span) -> Fallible<InternalIO> {
+        self.do_run_internal(io, span)
             .map_err(move |e| {
                 error!("error fetching graph: {}", e);
                 self.http_upstream_errors_total.inc();
@@ -190,10 +191,14 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let future_processed_graph = plugin.run_internal(InternalIO {
-                    graph: Default::default(),
-                    parameters: Default::default(),
-                });
+                let span = Span::inactive();
+                let future_processed_graph = plugin.run_internal(
+                    InternalIO {
+                        graph: Default::default(),
+                        parameters: Default::default(),
+                    },
+                    &span,
+                );
 
                 let processed_graph = runtime
                     .block_on(future_processed_graph)
@@ -255,10 +260,14 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let future_result = plugin.run_internal(InternalIO {
-                    graph: Default::default(),
-                    parameters: Default::default(),
-                });
+                let span = Span::inactive();
+                let future_result = plugin.run_internal(
+                    InternalIO {
+                        graph: Default::default(),
+                        parameters: Default::default(),
+                    },
+                    &span,
+                );
 
                 assert!(runtime.block_on(future_result).is_err());
 

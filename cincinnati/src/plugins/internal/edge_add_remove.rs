@@ -6,6 +6,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_REMOVE_ALL_EDGES_VALUE: &str = "*";
@@ -45,7 +46,7 @@ impl PluginSettings for EdgeAddRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, io: InternalIO, _: &Span) -> Fallible<InternalIO> {
         let timer = EDGE_ADD_REMOVE_DURATION.start_timer();
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
@@ -394,10 +395,14 @@ mod tests {
 
             ..Default::default()
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph.clone(),
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph.clone(),
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -449,10 +454,14 @@ mod tests {
 
             ..Default::default()
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -513,10 +522,14 @@ mod tests {
 
             ..Default::default()
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -565,10 +578,14 @@ mod tests {
 
             ..Default::default()
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -621,10 +638,14 @@ mod tests {
             ..Default::default()
         });
 
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph,
-            parameters: Default::default(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph,
+                parameters: Default::default(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -672,10 +693,14 @@ mod tests {
 
                     ..Default::default()
                 });
-                let future_processed_graph = plugin.run_internal(InternalIO {
-                    graph: input_graph.clone(),
-                    parameters: Default::default(),
-                });
+                let span = Span::inactive();
+                let future_processed_graph = plugin.run_internal(
+                    InternalIO {
+                        graph: input_graph.clone(),
+                        parameters: Default::default(),
+                    },
+                    &span,
+                );
 
                 let processed_graph = runtime.block_on(future_processed_graph)?.graph;
 

@@ -14,6 +14,7 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 use commons::GraphError;
 use lazy_static::lazy_static;
 use prometheus::{histogram_opts, Histogram};
+use rustracing_jaeger::span::Span;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_ARCH_KEY: &str = "release.arch";
@@ -100,7 +101,7 @@ lazy_static! {
 
 #[async_trait]
 impl InternalPlugin for ArchFilterPlugin {
-    async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
+    async fn run_internal(self: &Self, internal_io: InternalIO, _: &Span) -> Fallible<InternalIO> {
         let timer = ARCH_FILTER_DURATION.start_timer();
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
@@ -243,13 +244,17 @@ mod tests {
             key_suffix: "arch".to_string(),
             default_arch: "amd64".to_string(),
         });
-        let future_processed_graph = plugin.run_internal(InternalIO {
-            graph: input_graph.clone(),
-            parameters: [("arch", "arm64")]
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
-        });
+        let span = Span::inactive();
+        let future_processed_graph = plugin.run_internal(
+            InternalIO {
+                graph: input_graph.clone(),
+                parameters: [("arch", "arm64")]
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            },
+            &span,
+        );
 
         let processed_graph = runtime.block_on(future_processed_graph)?.graph;
 
