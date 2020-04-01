@@ -226,7 +226,7 @@ pub async fn run(settings: &config::AppSettings, state: &State) -> ! {
                 // the plugins used in the graph-builder don't expect any parameters yet
                 parameters: Default::default(),
             }),
-            &span,
+            &mut span,
             &state.tracer,
         )
         .await;
