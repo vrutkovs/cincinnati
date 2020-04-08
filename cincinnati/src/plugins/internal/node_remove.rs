@@ -75,9 +75,8 @@ mod tests {
 
     use super::*;
     use cincinnati::testing::{generate_custom_graph, TestMetadata};
-    use commons::testing::init_runtime;
+    use commons::testing::{init_runtime, mock_tracing};
     use failure::ResultExt;
-    use rustracing_jaeger::span::Span;
 
     #[test]
     fn ensure_release_remove() -> Fallible<()> {
@@ -120,7 +119,7 @@ mod tests {
         };
 
         let plugin = Box::new(NodeRemovePlugin { key_prefix });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,

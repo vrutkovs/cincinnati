@@ -182,8 +182,8 @@ mod network_tests {
 
     use cincinnati::plugins::internal::graph_builder::commons::tests::common_init;
     use cincinnati::testing::{TestGraphBuilder, TestMetadata};
+    use commons::testing::mock_tracing;
     use failure::{Fallible, ResultExt};
-    use rustracing_jaeger::span::Span;
     use std::collections::HashSet;
 
     #[test]
@@ -210,7 +210,7 @@ mod network_tests {
             None,
         )?);
 
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let graph: cincinnati::Graph = {
             let mut graph_raw = runtime
                 .block_on(plugin.run_internal(

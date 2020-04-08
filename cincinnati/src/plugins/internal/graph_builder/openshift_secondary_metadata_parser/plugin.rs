@@ -510,7 +510,7 @@ mod tests {
     use self::cincinnati::plugins::InternalPlugin;
     use self::cincinnati::testing::compare_graphs_verbose;
 
-    use rustracing_jaeger::span::Span;
+    use commons::testing::mock_tracing;
 
     use failure::{Fallible, ResultExt};
     use std::path::PathBuf;
@@ -566,7 +566,7 @@ mod tests {
 
         let graph_result = {
             // Run the plugin
-            let mut span = Span::inactive();
+            let (_, mut span) = mock_tracing();
             let io = runtime
                 .block_on(plugin.run_internal(
                     InternalIO {
@@ -589,7 +589,7 @@ mod tests {
         // Run the graph with quay metadata through the EdgeAddRemovePlugin
         // which will serve as the expected graph
         let graph_expected = {
-            let mut span = Span::inactive();
+            let (_, mut span) = mock_tracing();
             runtime
                 .block_on(edge_add_remove_plugin.run_internal(
                     InternalIO {

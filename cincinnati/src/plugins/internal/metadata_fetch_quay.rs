@@ -180,8 +180,7 @@ mod tests_net {
     use super::*;
     use cincinnati::testing::{generate_custom_graph, TestMetadata};
     use cincinnati::MapImpl;
-    use commons::testing::init_runtime;
-    use rustracing_jaeger::span::Span;
+    use commons::testing::{init_runtime, mock_tracing};
     use std::collections::HashMap;
 
     fn input_metadata_labels_test_annoated(manifestrefs: HashMap<usize, &str>) -> TestMetadata {
@@ -333,7 +332,7 @@ mod tests_net {
             )
             .expect("could not initialize the QuayMetadataPlugin"),
         );
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
@@ -397,7 +396,7 @@ mod tests_net {
             )
             .context("could not initialize the QuayMetadataPlugin")?,
         );
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,

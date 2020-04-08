@@ -488,7 +488,7 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
 #[cfg(feature = "test-net")]
 mod network_tests {
     use super::*;
-    use rustracing_jaeger::span::Span;
+    use commons::testing::mock_tracing;
     use std::collections::HashSet;
     #[test]
     fn openshift_secondary_metadata_extraction() -> Fallible<()> {
@@ -523,7 +523,7 @@ mod network_tests {
         let plugin = settings.build_plugin(None)?;
 
         for _ in 0..2 {
-            let mut span = Span::inactive();
+            let (_, mut span) = mock_tracing();
             let _ = runtime.block_on(plugin.run(
                 cincinnati::plugins::PluginIO::InternalIO(InternalIO {
                     graph: Default::default(),

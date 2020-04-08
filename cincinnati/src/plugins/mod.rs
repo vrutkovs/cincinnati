@@ -543,7 +543,6 @@ mod tests {
 
     #[test]
     fn process_plugins_roundtrip_external_internal() -> Fallible<()> {
-        use rustracing_jaeger::Tracer;
         let mut runtime = commons::testing::init_runtime()?;
 
         lazy_static! {
@@ -577,8 +576,7 @@ mod tests {
             .collect(),
         };
 
-        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
-        let mut span = Span::inactive();
+        let (tracer, mut span) = commons::testing::mock_tracing();
 
         let plugins_future = super::process(
             PLUGINS.iter(),
@@ -596,7 +594,6 @@ mod tests {
 
     #[test]
     fn process_plugins_loop() -> Fallible<()> {
-        use rustracing_jaeger::Tracer;
         let mut runtime = commons::testing::init_runtime()?;
 
         lazy_static! {
@@ -632,8 +629,7 @@ mod tests {
                 .cloned()
                 .collect(),
             };
-            let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
-            let mut span = Span::inactive();
+            let (tracer, mut span) = commons::testing::mock_tracing();
             let plugins_future = process(
                 PLUGINS.iter(),
                 PluginIO::InternalIO(initial_internalio.clone()),
@@ -671,8 +667,7 @@ mod tests {
 
         let timeout = *PLUGIN_DELAY * 2;
         let before_process = std::time::Instant::now();
-        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
-        let mut span = Span::inactive();
+        let (tracer, mut span) = commons::testing::mock_tracing();
         let result_internalio = super::process_blocking(
             PLUGINS.iter(),
             PluginIO::InternalIO(initial_internalio),
@@ -721,8 +716,7 @@ mod tests {
         // timeout hit
         let timeout = *PLUGIN_DELAY / 100;
         for _ in 0..10 {
-            let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
-            let mut span = Span::inactive();
+            let (tracer, mut span) = commons::testing::mock_tracing();
             let before_process = std::time::Instant::now();
             let result_internalio = super::process_blocking(
                 PLUGINS.iter(),

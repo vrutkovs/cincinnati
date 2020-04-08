@@ -20,7 +20,7 @@ mod tests {
     use async_trait::async_trait;
     use cincinnati::plugins::{interface, ExternalIO, ExternalPlugin, InternalIO, PluginResult};
     use cincinnati::testing::generate_graph;
-    use commons::testing::init_runtime;
+    use commons::testing::{init_runtime, mock_tracing};
     use failure::Fallible;
     use log::trace;
     use rustracing_jaeger::span::Span;
@@ -81,7 +81,7 @@ mod tests {
 
         let input: ExternalIO = input_internal.clone().try_into().unwrap();
 
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_output_external = plugin.run_external(input, &mut span);
 
         let output_external: ExternalIO = runtime.block_on(future_output_external).unwrap();
@@ -116,7 +116,7 @@ mod tests {
 
         let input: ExternalIO = input_internal.clone().try_into().unwrap();
 
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_output_result_external = plugin.run_external(input, &mut span);
 
         let output_result_external = runtime.block_on(future_output_result_external);

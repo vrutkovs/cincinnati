@@ -11,9 +11,9 @@ use cincinnati::plugins::internal::graph_builder::release_scrape_dockerv2::regis
 };
 use cincinnati::plugins::internal::metadata_fetch_quay::DEFAULT_QUAY_MANIFESTREF_KEY as MANIFESTREF_KEY;
 use cincinnati::{Empty, MapImpl, WouldCycle};
+use commons::testing::mock_tracing;
 use failure::{bail, ensure, Fallible};
 use itertools::Itertools;
-use rustracing_jaeger::span::Span;
 use semver::Version;
 use std::collections::HashMap;
 
@@ -122,7 +122,7 @@ fn fetch_release_private_with_credentials_must_succeed() {
     };
     let (username, password) =
         read_credentials(credentials_path.as_ref(), &registry.host_port_string()).unwrap();
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
     let mut releases = runtime
         .block_on(fetch_releases(
             &registry,
@@ -165,12 +165,11 @@ fn fetch_release_private_with_credentials_must_succeed() {
 
 #[test]
 fn fetch_release_private_without_credentials_must_fail() {
-    use rustracing_jaeger::span::Span;
     let (mut runtime, cache) = common_init();
 
     let registry = Registry::try_from_str("quay.io").unwrap();
     let repo = "redhat/openshift-cincinnati-test-private-manual";
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
     let releases = runtime.block_on(fetch_releases(
         &registry,
         &repo,
@@ -198,7 +197,7 @@ fn fetch_release_public_with_no_release_metadata_must_not_error() {
 
     let registry = Registry::try_from_str("quay.io").unwrap();
     let repo = "redhat/openshift-cincinnati-test-nojson-public-manual";
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
     let releases = runtime
         .block_on(fetch_releases(
             &registry,
@@ -220,7 +219,7 @@ fn fetch_release_public_with_first_empty_tag_must_succeed() {
 
     let registry = Registry::try_from_str("quay.io").unwrap();
     let repo = "redhat/openshift-cincinnati-test-emptyfirsttag-public-manual";
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
     let mut releases = runtime
         .block_on(fetch_releases(
             &registry,
@@ -266,7 +265,7 @@ fn fetch_release_public_must_succeed_with_schemes_missing_http_https() {
     let test = |registry: Registry| {
         let repo = "redhat/openshift-cincinnati-test-public-manual";
         let (username, password) = (None, None);
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let mut releases = runtime
             .block_on(fetch_releases(
                 &registry,
@@ -325,7 +324,7 @@ fn fetch_release_with_cyclic_metadata_fails() -> Fallible<()> {
     let repo = "redhat/openshift-cincinnati-test-cyclic-public-manual";
 
     let (username, password) = (None, None);
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
 
     let releases = runtime
         .block_on(fetch_releases(
@@ -360,7 +359,7 @@ fn fetch_releases_public_multiarch_manual_succeeds() -> Fallible<()> {
     let registry = registry::Registry::try_from_str("https://quay.io")?;
     let repo = "redhat/openshift-cincinnati-test-public-multiarch-manual";
     let (username, password) = (None, None);
-    let mut span = Span::inactive();
+    let (_, mut span) = mock_tracing();
     let releases = runtime
         .block_on(fetch_releases(
             &registry,

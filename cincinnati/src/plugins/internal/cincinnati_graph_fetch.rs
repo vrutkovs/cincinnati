@@ -117,7 +117,8 @@ impl CincinnatiGraphFetchPlugin {
     async fn do_run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
         span.set_tag(|| Tag::new("name", "graph-fetch"));
 
-        // extract current trace ID so that we could pass it to graph-builder
+        // extract current trace ID from headers
+        // this is required to make graph-builder trace a child of police-engine request
         let trace_hdr_name = HeaderName::from_lowercase(TRACE_HEADER_NAME.as_bytes()).unwrap();
 
         let trace_id = match span.context() {
@@ -176,10 +177,9 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use commons::metrics::{self, RegistryWrapper};
-    use commons::testing::{self, init_runtime};
+    use commons::testing::{self, init_runtime, mock_tracing};
     use failure::{bail, Fallible};
     use prometheus::Registry;
-    use rustracing_jaeger::span::Span;
 
     macro_rules! fetch_upstream_success_test {
         (
@@ -208,7 +208,7 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let mut span = Span::inactive();
+                let (_, mut span) = mock_tracing();
                 let future_processed_graph = plugin.run_internal(
                     InternalIO {
                         graph: Default::default(),
@@ -277,7 +277,7 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let mut span = Span::inactive();
+                let (_, mut span) = mock_tracing();
                 let future_result = plugin.run_internal(
                     InternalIO {
                         graph: Default::default(),

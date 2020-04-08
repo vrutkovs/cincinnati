@@ -335,9 +335,8 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use cincinnati::MapImpl;
-    use commons::testing::init_runtime;
+    use commons::testing::{init_runtime, mock_tracing};
     use failure::ResultExt;
-    use rustracing_jaeger::span::Span;
 
     static KEY_PREFIX: &str = "test_key";
 
@@ -381,7 +380,7 @@ mod tests {
 
             ..Default::default()
         });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph.clone(),
@@ -440,7 +439,7 @@ mod tests {
 
             ..Default::default()
         });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
@@ -508,7 +507,7 @@ mod tests {
 
             ..Default::default()
         });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
@@ -564,7 +563,7 @@ mod tests {
 
             ..Default::default()
         });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
@@ -624,7 +623,7 @@ mod tests {
             ..Default::default()
         });
 
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph,
@@ -679,7 +678,7 @@ mod tests {
 
                     ..Default::default()
                 });
-                let mut span = Span::inactive();
+                let (_, mut span) = mock_tracing();
                 let future_processed_graph = plugin.run_internal(
                     InternalIO {
                         graph: input_graph.clone(),
@@ -830,7 +829,6 @@ mod tests {
 
     #[test]
     fn edge_remove_bug() -> Fallible<()> {
-        use rustracing_jaeger::Tracer;
         let mut runtime = init_runtime()?;
 
         lazy_static::lazy_static! {
@@ -854,8 +852,7 @@ mod tests {
         )
         .unwrap();
 
-        let tracer = Tracer::new(rustracing::sampler::NullSampler).0;
-        let mut span = Span::inactive();
+        let (tracer, mut span) = mock_tracing();
 
         let process_result = cincinnati::plugins::process(
             PLUGINS.iter(),

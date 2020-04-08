@@ -1,6 +1,8 @@
 //! Test helpers.
 
 use failure::Fallible;
+use rustracing_jaeger::span::Span;
+use rustracing_jaeger::Tracer;
 use tokio::runtime::Runtime;
 
 /// Initialize logging.
@@ -116,4 +118,12 @@ pub fn sort_json_graph_by_version(v: &mut serde_json::Value) {
 
             a0.cmp(&b0).then_with(|| a1.cmp(&b1))
         });
+}
+
+/// Prepare fake tracer and span
+pub fn mock_tracing() -> (Tracer, Span) {
+    (
+        Tracer::new(rustracing::sampler::NullSampler).0,
+        Span::inactive(),
+    )
 }

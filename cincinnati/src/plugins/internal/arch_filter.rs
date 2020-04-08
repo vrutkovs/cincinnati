@@ -168,8 +168,7 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use cincinnati::testing::TestMetadata;
-    use commons::testing::init_runtime;
-    use rustracing_jaeger::span::Span;
+    use commons::testing::{init_runtime, mock_tracing};
 
     #[test]
     fn plugin_filters_by_arch_and_strips_suffixes() -> Fallible<()> {
@@ -236,7 +235,7 @@ mod tests {
             key_suffix: "arch".to_string(),
             default_arch: "amd64".to_string(),
         });
-        let mut span = Span::inactive();
+        let (_, mut span) = mock_tracing();
         let future_processed_graph = plugin.run_internal(
             InternalIO {
                 graph: input_graph.clone(),

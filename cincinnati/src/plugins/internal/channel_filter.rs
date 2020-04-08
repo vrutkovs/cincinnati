@@ -113,7 +113,7 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use cincinnati::MapImpl;
-    use commons::testing::init_runtime;
+    use commons::testing::{init_runtime, mock_tracing};
     use std::collections::HashMap;
 
     #[test]
@@ -146,7 +146,7 @@ mod tests {
         ] {
             for channel in &mut datum.channels {
                 let plugin = plugin.clone();
-                let mut span = Span::inactive();
+                let (_, mut span) = mock_tracing();
                 let future_result = plugin.run_internal(
                     InternalIO {
                         graph: Default::default(),
@@ -383,7 +383,7 @@ mod tests {
         for (i, datum) in data.into_iter().enumerate() {
             println!("processing data set #{}: '{}'", i, datum.description);
             let plugin = plugin.clone();
-            let mut span = Span::inactive();
+            let (_, mut span) = mock_tracing();
             let future_processed_graph = plugin.run_internal(
                 InternalIO {
                     graph: datum.input_graph,
