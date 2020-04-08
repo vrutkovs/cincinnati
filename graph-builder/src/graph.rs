@@ -13,23 +13,21 @@
 // limitations under the License.
 use crate::built_info;
 use crate::config;
+use actix_web::http::HeaderMap;
 use actix_web::{HttpRequest, HttpResponse};
 use cincinnati::plugins::prelude::*;
 use cincinnati::CONTENT_TYPE;
 use commons::metrics::HasRegistry;
-use commons::GraphError;
+use commons::{create_span_from_headers, GraphError};
 use failure::Fallible;
 use lazy_static;
 pub use parking_lot::RwLock;
 use prometheus::{self, histogram_opts, labels, opts, Counter, Gauge, Histogram, IntGauge};
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::SpanContext;
 use rustracing_jaeger::Tracer;
 use serde_json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
-use trackable::{track, track_try_unwrap};
 
 lazy_static! {
     static ref GRAPH_FINAL_RELEASES: IntGauge = IntGauge::new(
@@ -101,18 +99,7 @@ pub async fn index(
     req: HttpRequest,
     app_data: actix_web::web::Data<State>,
 ) -> Result<HttpResponse, GraphError> {
-    let mut carrier: HashMap<String, String> = HashMap::new();
-    let headers = req.headers();
-    for (k, v) in headers {
-        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
-    }
-
-    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-    let mut _span_builder = app_data.get_ref().tracer.span("index").child_of(&context);
-    for (k, v) in carrier {
-        _span_builder = _span_builder.tag(Tag::new(k, v))
-    }
-    let mut span = _span_builder.start();
+    let mut span = create_span_from_headers(app_data.get_ref().tracer, "index", req.headers());
 
     V1_GRAPH_INCOMING_REQS.inc();
 
@@ -215,10 +202,7 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
         debug!("graph update triggered");
         let scrape_timer = UPSTREAM_SCRAPES_DURATION.start_timer();
 
-        let carrier: HashMap<String, String> = HashMap::new();
-
-        let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-        let mut span = state.tracer.span("scrape").child_of(&context).start();
+        let mut span = create_span_from_headers(state.tracer, "scrape", &HeaderMap::new());
 
         let scrape = cincinnati::plugins::process_blocking(
             state.plugins.iter(),

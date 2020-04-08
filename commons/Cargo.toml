@@ -18,6 +18,8 @@ url = "^1.7.2"
 futures = "^0.3"
 rustracing = "0.4.0"
 rustracing_jaeger = "0.4.1"
+reqwest = "^0.10"
+trackable = "0.2.23"
 
 [dev-dependencies]
 twoway = "^0.2"

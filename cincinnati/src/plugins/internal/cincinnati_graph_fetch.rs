@@ -9,11 +9,11 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 use self::cincinnati::CONTENT_TYPE;
 
-use commons::GraphError;
+use commons::{build_header_for_span, GraphError};
 use failure::{Fallible, ResultExt};
 use prometheus::Counter;
 use reqwest;
-use reqwest::header::{HeaderName, HeaderValue, ACCEPT};
+use reqwest::header::{HeaderValue, ACCEPT};
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 use std::time::Duration;
@@ -23,10 +23,6 @@ pub static DEFAULT_UPSTREAM_URL: &str = "http://localhost:8080/v1/graph";
 
 /// Default graph-builder connection timeout in seconds.
 pub static DEFAULT_TIMEOUT_SECS: u64 = 30;
-
-/// Header name used by jaeger to set trace context
-pub static TRACE_HEADER_NAME: &str = "uber-trace-id";
-// TODO: find a way to import rustracing_jaeger::constants::TRACER_CONTEXT_HEADER_NAME?
 
 /// Plugin settings.
 #[derive(Clone, CustomDebug, Deserialize, SmartDefault)]
@@ -119,13 +115,7 @@ impl CincinnatiGraphFetchPlugin {
 
         // extract current trace ID from headers
         // this is required to make graph-builder trace a child of police-engine request
-        let trace_hdr_name = HeaderName::from_lowercase(TRACE_HEADER_NAME.as_bytes()).unwrap();
-
-        let trace_id = match span.context() {
-            Some(context) => context.state().to_string(),
-            None => String::new(),
-        };
-        let trace_hdr_value = HeaderValue::from_str(&trace_id).unwrap();
+        let (trace_hdr_name, trace_hdr_value) = build_header_for_span(span);
 
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();

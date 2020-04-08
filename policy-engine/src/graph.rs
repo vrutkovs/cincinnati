@@ -5,11 +5,10 @@ use actix_web::web::Query;
 use actix_web::{HttpRequest, HttpResponse};
 use cincinnati::plugins::BoxedPlugin;
 use cincinnati::CONTENT_TYPE;
-use commons::{self, GraphError};
+use commons::{self, create_span_from_headers, GraphError};
 use failure::Fallible;
 use prometheus::{histogram_opts, Counter, Histogram, Registry};
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::{Span, SpanContext};
+use rustracing_jaeger::span::Span;
 use rustracing_jaeger::Tracer;
 use serde_json;
 use std::collections::HashMap;
@@ -42,22 +41,8 @@ pub(crate) async fn index(
     req: HttpRequest,
     app_data: actix_web::web::Data<AppState>,
 ) -> Result<HttpResponse, GraphError> {
-    let mut carrier: HashMap<String, String> = HashMap::new();
-    let headers = req.headers();
-    let query_string = req.query_string().to_string();
-    for (k, v) in headers {
-        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
-    }
-
     let tracer = &app_data.get_ref().tracer;
-    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-    let mut _span = tracer.span("index").child_of(&context);
-    for (k, v) in carrier {
-        _span = _span.tag(Tag::new(k, v))
-    }
-    // Tracing: keep query_string as a tag
-    _span = _span.tag(Tag::new("query_string", query_string));
-    let mut span = _span.start();
+    let mut span = create_span_from_headers(tracer, "index", req.headers());
 
     V1_GRAPH_INCOMING_REQS.inc();
 
@@ -74,7 +59,7 @@ pub(crate) async fn index(
 
     let timer = V1_GRAPH_SERVE_HIST.start_timer();
 
-    let response = process_plugins(app_data.plugins.iter(), plugin_params, &mut span, &tracer)
+    let response = process_plugins(app_data.plugins.iter(), plugin_params, &mut span, tracer)
         .await
         .map_err(|e| {
             error!(
