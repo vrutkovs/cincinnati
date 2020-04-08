@@ -277,8 +277,5 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
         let nodes_count = internal_io.graph.releases_count();
         GRAPH_FINAL_RELEASES.set(nodes_count as i64);
         debug!("graph update completed, {} valid releases", nodes_count);
-        // span.log(|log| {
-        //     log.std().message("done");
-        // });
     }
 }
