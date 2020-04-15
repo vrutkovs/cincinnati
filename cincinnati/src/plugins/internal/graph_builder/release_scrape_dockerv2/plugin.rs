@@ -5,6 +5,7 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use commons::trace_log;
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 use std::convert::TryInto;
@@ -151,9 +152,7 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
         .await
         .context("failed to fetch all release metadata")?;
 
-        span.log(|log| {
-            log.std().message("fetched release metadata");
-        });
+        trace_log!(span, "fetched release metadata");
         if releases.is_empty() {
             warn!(
                 "could not find any releases in {}/{}",

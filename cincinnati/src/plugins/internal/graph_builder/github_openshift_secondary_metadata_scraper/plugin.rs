@@ -6,6 +6,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use commons::trace_log;
+
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 use tokio::sync::Mutex as FuturesMutex;
@@ -466,9 +468,7 @@ impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
             .await
             .context("Checking for new commit")?;
 
-        span.log(|log| {
-            log.std().message("checked for new commit");
-        });
+        trace_log!(span, "checked for new commit");
 
         if should_update {
             let (commit, blob) = self

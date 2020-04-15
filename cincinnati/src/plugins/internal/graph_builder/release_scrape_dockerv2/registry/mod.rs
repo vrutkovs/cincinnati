@@ -32,6 +32,7 @@ use std::string::String;
 use std::sync::Arc;
 use tar::Archive;
 
+use commons::trace_log;
 use rustracing_jaeger::span::Span;
 
 /// Module for the release cache
@@ -213,15 +214,11 @@ pub async fn fetch_releases(
         .await
         .map_err(|e| format_err!("{}", e))?;
 
-    span.log(|log| {
-        log.std().message("got authenticated_client");
-    });
+    trace_log!(span, "got authenticated_client");
 
     let authenticated_client_get_tags = authenticated_client.clone();
     let tags = Box::pin(get_tags(repo, &authenticated_client_get_tags).await);
-    span.log(|log| {
-        log.std().message("fetched tags from the client");
-    });
+    trace_log!(span, "fetched tags from the client");
 
     let releases = {
         let estimated_releases = match tags.size_hint() {
@@ -303,9 +300,7 @@ pub async fn fetch_releases(
     })
     .await?;
 
-    span.log(|log| {
-        log.std().message("processed tags");
-    });
+    trace_log!(span, "processed tags");
 
     let releases = Arc::<
         FuturesMutex<Vec<cincinnati::plugins::internal::graph_builder::release::Release>>,

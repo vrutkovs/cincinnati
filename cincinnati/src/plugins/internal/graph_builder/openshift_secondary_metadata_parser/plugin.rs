@@ -4,6 +4,7 @@ use self::cincinnati::plugins::internal::graph_builder::github_openshift_seconda
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
+use commons::trace_log;
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::Span;
 
@@ -484,17 +485,11 @@ impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
         let data_dir = self.get_data_directory(&io);
 
         self.process_raw_metadata(&mut io.graph, &data_dir).await?;
-        span.log(|log| {
-            log.std().message("metadata processed");
-        });
+        trace_log!(span, "metadata processed");
         self.process_blocked_edges(&mut io.graph, &data_dir).await?;
-        span.log(|log| {
-            log.std().message("processed blocked edges");
-        });
+        trace_log!(span, "processed blocked edges");
         self.process_channels(&mut io.graph, &data_dir).await?;
-        span.log(|log| {
-            log.std().message("processed channels");
-        });
+        trace_log!(span, "processed channels");
 
         Ok(io)
     }

@@ -18,7 +18,7 @@ use actix_web::{HttpRequest, HttpResponse};
 use cincinnati::plugins::prelude::*;
 use cincinnati::CONTENT_TYPE;
 use commons::metrics::HasRegistry;
-use commons::{create_span_from_headers, GraphError};
+use commons::{create_span_from_headers, trace_log, GraphError};
 use failure::Fallible;
 use lazy_static;
 pub use parking_lot::RwLock;
@@ -114,9 +114,7 @@ pub async fn index(
         .content_type(CONTENT_TYPE)
         .body(app_data.json.read().clone());
 
-    span.log(|log| {
-        log.std().message("prepared the graph");
-    });
+    trace_log!(span, "prepared the graph");
 
     Ok(resp)
 }
@@ -235,15 +233,11 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
                 continue;
             }
         };
-        span.log(|log| {
-            log.std().message("json marshalled");
-        });
+        trace_log!(span, "json marshalled");
 
         *state.json.write() = json_graph;
 
-        span.log(|log| {
-            log.std().message("state written");
-        });
+        trace_log!(span, "state written");
 
         // Record scrape duration
         scrape_value = scrape_timer.stop_and_discard();
