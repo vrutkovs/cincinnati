@@ -9,8 +9,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::Span;
+use opentelemetry::api::{Key, Provider, Span, Tracer};
+use opentelemetry::global::{trace_provider, GenericTracer};
 
 pub static DEFAULT_QUAY_LABEL_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_QUAY_MANIFESTREF_KEY: &str = "io.openshift.upgrades.graph.release.manifestref";
@@ -101,8 +101,17 @@ impl QuayMetadataFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
-        span.set_tag(|| Tag::new("name", "metadata-fetch-quay"));
+    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        // let provider = global::trace_provider();
+        // let _span = provider.get_tracer("graph-builder").start("plugin", None);
+        // _span.set_attribute(Key::new("name").string("metadata-fetch-quay"));
+
+        let tracer = trace_provider().get_tracer("graph-builder");
+        let _parent_context = tracer.get_active_span_boxed().get_context();
+        let _span = tracer.start("plugin", Some(_parent_context));
+        _span.set_attribute(Key::new("name").string("metadata-fetch-quay"));
+
+        // span.set_tag(|| Tag::new("name", "metadata-fetch-quay"));
         let (mut graph, parameters) = (io.graph, io.parameters);
 
         trace!("fetching metadata from quay labels...");

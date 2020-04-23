@@ -9,8 +9,6 @@ extern crate failure;
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
-#[macro_use]
-extern crate trackable;
 
 mod config;
 pub use crate::config::MergeOptions;
@@ -24,18 +22,8 @@ mod errors;
 pub use errors::{register_metrics, GraphError, MISSING_APPSTATE_PANIC_MSG};
 
 use actix_web::http::{header, HeaderMap};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use url::form_urlencoded;
-
-use reqwest::header::{HeaderName, HeaderValue};
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::Span;
-use rustracing_jaeger::span::SpanContext;
-use rustracing_jaeger::Tracer;
-
-/// Header name used by jaeger to set trace context
-pub static TRACE_HEADER_NAME: &str = "uber-trace-id";
-// TODO: find a way to import rustracing_jaeger::constants::TRACER_CONTEXT_HEADER_NAME?
 
 /// Strip all but one leading slash and all trailing slashes
 pub fn parse_path_prefix<S>(path_prefix: S) -> String
@@ -117,38 +105,6 @@ pub fn ensure_content_type(
         Ok(())
     }
 }
-
-/// Build HeaderName and HeaderValue for current span
-pub fn build_header_for_span(span: &Span) -> (HeaderName, HeaderValue) {
-    let trace_id = match span.context() {
-        Some(context) => context.state().to_string(),
-        None => String::new(),
-    };
-    (
-        HeaderName::from_lowercase(TRACE_HEADER_NAME.as_bytes()).unwrap(),
-        HeaderValue::from_str(&trace_id).unwrap(),
-    )
-}
-
-/// Extract headers from request and prepare a new span
-pub fn create_span_from_headers(
-    tracer: &Tracer,
-    span_name: &'static str,
-    headers: &HeaderMap,
-) -> Span {
-    let mut carrier: HashMap<String, String> = HashMap::new();
-    for (k, v) in headers {
-        carrier.insert(k.to_string(), v.to_str().unwrap().to_string());
-    }
-
-    let context = track_try_unwrap!(SpanContext::extract_from_http_header(&carrier));
-    let mut _span_builder = tracer.span(span_name).child_of(&context);
-    for (k, v) in carrier {
-        _span_builder = _span_builder.tag(Tag::new(k, v))
-    }
-    _span_builder.start()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

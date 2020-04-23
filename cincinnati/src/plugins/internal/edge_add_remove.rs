@@ -4,8 +4,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::Span;
+use opentelemetry::api::{Key, Provider, Span, Tracer};
+use opentelemetry::global;
 
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_REMOVE_ALL_EDGES_VALUE: &str = "*";
@@ -26,8 +26,11 @@ pub struct EdgeAddRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
-        span.set_tag(|| Tag::new("name", "edge-add-remove"));
+    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let provider = global::trace_provider();
+        let _span = provider.get_tracer("graph-builder").start("plugin", None);
+        _span.set_attribute(Key::new("name").string("edge-add-remove"));
+
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
         self.remove_edges(&mut graph)?;
@@ -335,7 +338,7 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use cincinnati::MapImpl;
-    use commons::testing::{init_runtime, mock_tracing};
+    use commons::testing::init_runtime;
     use failure::ResultExt;
 
     static KEY_PREFIX: &str = "test_key";
@@ -380,14 +383,10 @@ mod tests {
 
             ..Default::default()
         });
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph.clone(),
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph.clone(),
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -439,14 +438,10 @@ mod tests {
 
             ..Default::default()
         });
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph,
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph,
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -507,14 +502,10 @@ mod tests {
 
             ..Default::default()
         });
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph,
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph,
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -563,14 +554,10 @@ mod tests {
 
             ..Default::default()
         });
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph,
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph,
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -623,14 +610,10 @@ mod tests {
             ..Default::default()
         });
 
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph,
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph,
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
@@ -678,14 +661,10 @@ mod tests {
 
                     ..Default::default()
                 });
-                let (_, mut span) = mock_tracing();
-                let future_processed_graph = plugin.run_internal(
-                    InternalIO {
-                        graph: input_graph.clone(),
-                        parameters: Default::default(),
-                    },
-                    &mut span,
-                );
+                let future_processed_graph = plugin.run_internal(InternalIO {
+                    graph: input_graph.clone(),
+                    parameters: Default::default(),
+                });
 
                 let processed_graph = runtime.block_on(future_processed_graph)?.graph;
 
@@ -852,16 +831,12 @@ mod tests {
         )
         .unwrap();
 
-        let (tracer, mut span) = mock_tracing();
-
         let process_result = cincinnati::plugins::process(
             PLUGINS.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
                 graph: input_graph.clone(),
                 parameters: Default::default(),
             }),
-            &mut span,
-            &tracer,
         );
 
         let graph = runtime.block_on(process_result)?.graph;

@@ -16,10 +16,10 @@ serde_json = "^1.0.34"
 tokio = "^0.2"
 url = "^1.7.2"
 futures = "^0.3"
-rustracing = "0.4.0"
-rustracing_jaeger = "0.4.1"
+opentelemetry = "0.4.0"
+opentelemetry-jaeger = "0.3.0"
 reqwest = "^0.10"
-trackable = "0.2.23"
+thrift = "0.13"
 
 [dev-dependencies]
 twoway = "^0.2"

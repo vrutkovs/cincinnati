@@ -20,10 +20,9 @@ mod tests {
     use async_trait::async_trait;
     use cincinnati::plugins::{interface, ExternalIO, ExternalPlugin, InternalIO, PluginResult};
     use cincinnati::testing::generate_graph;
-    use commons::testing::{init_runtime, mock_tracing};
+    use commons::testing::init_runtime;
     use failure::Fallible;
     use log::trace;
-    use rustracing_jaeger::span::Span;
     use std::convert::TryInto;
 
     struct DummyWebClient {
@@ -38,7 +37,7 @@ mod tests {
 
     #[async_trait]
     impl ExternalPlugin for DummyWebClient {
-        async fn run_external(self: &Self, io: ExternalIO, _: &mut Span) -> Fallible<ExternalIO> {
+        async fn run_external(self: &Self, io: ExternalIO) -> Fallible<ExternalIO> {
             let input: interface::PluginExchange = io.try_into()?;
 
             match (self.callback)(input) {
@@ -81,8 +80,7 @@ mod tests {
 
         let input: ExternalIO = input_internal.clone().try_into().unwrap();
 
-        let (_, mut span) = mock_tracing();
-        let future_output_external = plugin.run_external(input, &mut span);
+        let future_output_external = plugin.run_external(input);
 
         let output_external: ExternalIO = runtime.block_on(future_output_external).unwrap();
         let output_internal: InternalIO = output_external.try_into().unwrap();
@@ -116,8 +114,7 @@ mod tests {
 
         let input: ExternalIO = input_internal.clone().try_into().unwrap();
 
-        let (_, mut span) = mock_tracing();
-        let future_output_result_external = plugin.run_external(input, &mut span);
+        let future_output_result_external = plugin.run_external(input);
 
         let output_result_external = runtime.block_on(future_output_result_external);
         let output_result: PluginResult = output_result_external.try_into().unwrap();

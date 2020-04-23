@@ -9,13 +9,14 @@ use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 use self::cincinnati::CONTENT_TYPE;
 
-use commons::{build_header_for_span, GraphError};
+use opentelemetry::api::{Key, Provider, Span, Tracer};
+use opentelemetry::global;
+
+use commons::GraphError;
 use failure::{Fallible, ResultExt};
 use prometheus::Counter;
 use reqwest;
 use reqwest::header::{HeaderValue, ACCEPT};
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::Span;
 use std::time::Duration;
 
 /// Default URL to upstream graph provider.
@@ -110,12 +111,12 @@ impl CincinnatiGraphFetchPlugin {
 }
 
 impl CincinnatiGraphFetchPlugin {
-    async fn do_run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
-        span.set_tag(|| Tag::new("name", "graph-fetch"));
+    async fn do_run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        // span.set_tag(|| Tag::new("name", "graph-fetch"));
 
         // extract current trace ID from headers
         // this is required to make graph-builder trace a child of police-engine request
-        let (trace_hdr_name, trace_hdr_value) = build_header_for_span(span);
+        // let (trace_hdr_name, trace_hdr_value) = build_header_for_span(span);
 
         trace!("getting graph from upstream at {}", self.upstream);
         self.http_upstream_reqs.inc();
@@ -124,7 +125,7 @@ impl CincinnatiGraphFetchPlugin {
             .client
             .get(&self.upstream)
             .header(ACCEPT, HeaderValue::from_static(CONTENT_TYPE))
-            .header(trace_hdr_name, trace_hdr_value)
+            // .header(trace_hdr_name, trace_hdr_value)
             .send()
             .map_err(|e| GraphError::FailedUpstreamFetch(e.to_string()))
             .await?;
@@ -151,8 +152,11 @@ impl CincinnatiGraphFetchPlugin {
 
 #[async_trait]
 impl InternalPlugin for CincinnatiGraphFetchPlugin {
-    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
-        self.do_run_internal(io, span)
+    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let provider = global::trace_provider();
+        let _span = provider.get_tracer("graph-builder").start("plugin", None);
+        _span.set_attribute(Key::new("name").string("graph-fetch"));
+        self.do_run_internal(io)
             .map_err(move |e| {
                 error!("error fetching graph: {}", e);
                 self.http_upstream_errors_total.inc();
@@ -167,7 +171,7 @@ mod tests {
     use super::*;
     use cincinnati::testing::generate_custom_graph;
     use commons::metrics::{self, RegistryWrapper};
-    use commons::testing::{self, init_runtime, mock_tracing};
+    use commons::testing::{self, init_runtime};
     use failure::{bail, Fallible};
     use prometheus::Registry;
 
@@ -198,14 +202,10 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let (_, mut span) = mock_tracing();
-                let future_processed_graph = plugin.run_internal(
-                    InternalIO {
-                        graph: Default::default(),
-                        parameters: Default::default(),
-                    },
-                    &mut span,
-                );
+                let future_processed_graph = plugin.run_internal(InternalIO {
+                    graph: Default::default(),
+                    parameters: Default::default(),
+                });
 
                 let processed_graph = runtime
                     .block_on(future_processed_graph)
@@ -267,14 +267,10 @@ mod tests {
                 assert_eq!(0, http_upstream_reqs.clone().get() as u64);
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
-                let (_, mut span) = mock_tracing();
-                let future_result = plugin.run_internal(
-                    InternalIO {
-                        graph: Default::default(),
-                        parameters: Default::default(),
-                    },
-                    &mut span,
-                );
+                let future_result = plugin.run_internal(InternalIO {
+                    graph: Default::default(),
+                    parameters: Default::default(),
+                });
 
                 assert!(runtime.block_on(future_result).is_err());
 

@@ -34,9 +34,6 @@ use failure::Error;
 use prometheus::{labels, opts, Counter, Registry};
 use std::collections::HashSet;
 
-use rustracing_jaeger::reporter::JaegerCompactReporter;
-use rustracing_jaeger::Tracer;
-
 #[allow(dead_code)]
 /// Build info
 mod built_info {
@@ -89,7 +86,7 @@ fn main() -> Result<(), Error> {
     .run();
 
     // Enable tracing
-    let (tracer, span_rx) = Tracer::new(rustracing::sampler::AllSampler);
+    init_tracer()?;
 
     // Main service.
     let plugins = settings.validate_and_build_plugins(Some(registry))?;
@@ -99,16 +96,6 @@ fn main() -> Result<(), Error> {
         plugins: Box::leak(Box::new(plugins)),
         tracer: tracer,
     };
-
-    // Spawns a reporting thread at the initialization phase in your application
-    std::thread::spawn(move || {
-        let reporter = track_try_unwrap!(JaegerCompactReporter::new("policy-engine"));
-        while let Ok(span) = span_rx.recv() {
-            if reporter.report(&[span][..]).is_err() {
-                break;
-            }
-        }
-    });
 
     HttpServer::new(move || {
         let app_prefix = state.path_prefix.clone();

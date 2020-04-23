@@ -5,8 +5,8 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::Span;
+use opentelemetry::api::{Key, Provider, Span, Tracer};
+use opentelemetry::global::{trace_provider, GenericTracer};
 
 /// Prefix for the metadata key operations.
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
@@ -40,8 +40,11 @@ impl NodeRemovePlugin {
 
 #[async_trait]
 impl InternalPlugin for NodeRemovePlugin {
-    async fn run_internal(self: &Self, io: InternalIO, span: &mut Span) -> Fallible<InternalIO> {
-        span.set_tag(|| Tag::new("name", "node-remove"));
+    async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
+        let tracer = trace_provider().get_tracer("graph-builder");
+        let _parent_context = tracer.get_active_span_boxed().get_context();
+        let _span = tracer.start("plugin", Some(_parent_context));
+        _span.set_attribute(Key::new("name").string("node-remove"));
 
         let mut graph = io.graph;
         let key_suffix = "release.remove";
@@ -75,7 +78,7 @@ mod tests {
 
     use super::*;
     use cincinnati::testing::{generate_custom_graph, TestMetadata};
-    use commons::testing::{init_runtime, mock_tracing};
+    use commons::testing::init_runtime;
     use failure::ResultExt;
 
     #[test]
@@ -119,14 +122,10 @@ mod tests {
         };
 
         let plugin = Box::new(NodeRemovePlugin { key_prefix });
-        let (_, mut span) = mock_tracing();
-        let future_processed_graph = plugin.run_internal(
-            InternalIO {
-                graph: input_graph,
-                parameters: Default::default(),
-            },
-            &mut span,
-        );
+        let future_processed_graph = plugin.run_internal(InternalIO {
+            graph: input_graph,
+            parameters: Default::default(),
+        });
 
         let processed_graph = runtime
             .block_on(future_processed_graph)
