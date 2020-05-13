@@ -11,9 +11,15 @@ use actix_web::http;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 /// init_tracer sets up Jaeger tracer
-pub fn init_tracer(name: &'static str) -> thrift::Result<()> {
+pub fn init_tracer(name: &'static str, maybe_agent_endpoint: Option<String>) -> thrift::Result<()> {
+    // Skip provider config if agent endpoint is not set
+    let agent_endpoint = match maybe_agent_endpoint {
+        None => return Ok(()),
+        Some(s) => s,
+    };
+
     let exporter = Exporter::builder()
-        .with_agent_endpoint("127.0.0.1:6831".parse().unwrap())
+        .with_agent_endpoint(agent_endpoint)
         .with_process(Process {
             service_name: name.to_string(),
             tags: vec![Key::new("exporter").string("jaeger")],

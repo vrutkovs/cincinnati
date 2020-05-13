@@ -29,7 +29,7 @@ impl InternalPlugin for EdgeAddRemovePlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("edge_add_remove".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
 
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;

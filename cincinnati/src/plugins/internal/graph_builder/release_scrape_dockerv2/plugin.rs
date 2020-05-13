@@ -139,7 +139,7 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("registry-scrape".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
 
         let releases = registry::fetch_releases(
             &self.registry,

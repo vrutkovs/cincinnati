@@ -59,7 +59,7 @@ impl InternalPlugin for ChannelFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("channel-filter".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
         let channel = get_multiple_values!(internal_io.parameters, "channel")
             .map_err(|e| GraphError::MissingParams(vec![e.to_string()]))?
             .clone();

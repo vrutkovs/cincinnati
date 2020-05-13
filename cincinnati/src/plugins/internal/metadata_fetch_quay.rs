@@ -104,7 +104,7 @@ impl InternalPlugin for QuayMetadataFetchPlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("metadata-fetch-quay".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
 
         let (mut graph, parameters) = (io.graph, io.parameters);
 

@@ -93,7 +93,7 @@ impl InternalPlugin for ArchFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("arch-filter".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
 
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),

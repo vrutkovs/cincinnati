@@ -157,7 +157,7 @@ impl InternalPlugin for CincinnatiGraphFetchPlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("graph_fetch".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
         self.do_run_internal(io)
             .map_err(move |e| {
                 error!("error fetching graph: {}", e);

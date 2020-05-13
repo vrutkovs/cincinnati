@@ -477,7 +477,7 @@ impl InternalPlugin for OpenshiftSecondaryMetadataParserPlugin {
     async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
         get_tracer()
             .get_active_span()
-            .update_name("parse-secondary-metadata".to_string());
+            .update_name(Self::PLUGIN_NAME.to_string());
 
         let data_dir = self.get_data_directory(&io);
 
