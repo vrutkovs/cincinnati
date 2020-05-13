@@ -11,9 +11,9 @@ use actix_web::http;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 /// init_tracer sets up Jaeger tracer
-pub fn init_tracer(name: &'static str) -> thrift::Result<()> {
+pub fn init_tracer(name: &'static str, agent_endpoint: String) -> thrift::Result<()> {
     let exporter = Exporter::builder()
-        .with_agent_endpoint("127.0.0.1:6831".parse().unwrap())
+        .with_agent_endpoint(agent_endpoint)
         .with_process(Process {
             service_name: name.to_string(),
             tags: vec![Key::new("exporter").string("jaeger")],

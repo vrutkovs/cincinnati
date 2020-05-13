@@ -87,7 +87,7 @@ fn main() -> Result<(), Error> {
     .run();
 
     // Enable tracing
-    init_tracer("policy-engine")?;
+    init_tracer("policy-engine", settings.tracing_endpoint.clone())?;
 
     // Main service.
     let plugins = settings.validate_and_build_plugins(Some(registry))?;

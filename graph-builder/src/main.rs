@@ -39,7 +39,7 @@ fn main() -> Result<(), Error> {
         metrics::new_registry(Some(config::METRICS_PREFIX.to_string()))?;
 
     // Enable tracing
-    init_tracer("graph-builder")?;
+    init_tracer("graph-builder", settings.tracing_endpoint.clone())?;
 
     let plugins = settings.validate_and_build_plugins(Some(&registry))?;
 

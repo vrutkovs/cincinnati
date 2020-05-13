@@ -47,6 +47,10 @@ pub struct AppSettings {
 
     /// Required client parameters for the main service.
     pub mandatory_client_parameters: HashSet<String>,
+
+    /// Jaeger host and port for tracing support
+    #[default("127.0.0.1:6831")]
+    pub tracing_endpoint: String,
 }
 
 impl AppSettings {
