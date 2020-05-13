@@ -20,7 +20,9 @@ use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
-use opentelemetry::api::{trace::futures::Instrument, Span, Tracer};
+use log::trace;
+
+use opentelemetry::api::{trace::futures::Instrument, Tracer};
 
 pub mod prelude {
     use crate as cincinnati;
@@ -251,7 +253,7 @@ impl TryFrom<ExternalIO> for InternalIO {
         let mut plugin_exchange: PluginExchange = external_io.try_into()?;
 
         Ok(Self {
-            name: plugin_exchange.get_name().into(),
+            name: plugin_exchange.get_name(),
             graph: plugin_exchange.take_graph().into(),
             parameters: plugin_exchange.take_parameters(),
         })
@@ -265,7 +267,7 @@ impl From<InternalIO> for interface::PluginExchange {
     fn from(internal_io: InternalIO) -> Self {
         let mut plugin_exchange = Self::new();
 
-        plugin_exchange.set_name(internal_io.name.into());
+        plugin_exchange.set_name(internal_io.name);
         plugin_exchange.set_graph(internal_io.graph.into());
         plugin_exchange.set_parameters(internal_io.parameters);
 
@@ -375,12 +377,14 @@ where
     let mut io = initial_io;
 
     for next_plugin in plugins {
-        let span = get_tracer().start("plugin", None);
-        match next_plugin.get_name().await {
-            Some(s) => span.update_name(s),
-            None => {}
-        };
-        io = next_plugin.run(io).instrument(span).await?;
+        // let plugin_name = next_plugin
+        //     .get_name()
+        //     .await
+        //     .unwrap_or("unknown plugin".to_string());
+        // trace!("plugin {}", plugin_name);
+        // let span = get_tracer().start(&plugin_name, None);
+        // io = next_plugin.run(io).instrument(span).await?;
+        io = next_plugin.run(io).await?;
     }
 
     io.try_into()
