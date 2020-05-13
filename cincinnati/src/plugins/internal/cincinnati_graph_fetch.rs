@@ -146,6 +146,7 @@ impl CincinnatiGraphFetchPlugin {
             serde_json::from_slice(&body).map_err(|e| GraphError::FailedJsonIn(e.to_string()))?;
 
         Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
             graph,
             parameters: io.parameters,
         })
@@ -155,9 +156,6 @@ impl CincinnatiGraphFetchPlugin {
 #[async_trait]
 impl InternalPlugin for CincinnatiGraphFetchPlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("graph_fetch".to_string());
         self.do_run_internal(io)
             .map_err(move |e| {
                 error!("error fetching graph: {}", e);
@@ -205,6 +203,7 @@ mod tests {
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
                 let future_processed_graph = plugin.run_internal(InternalIO {
+                    name: Some(CincinnatiGraphFetchPlugin::PLUGIN_NAME.to_string()),
                     graph: Default::default(),
                     parameters: Default::default(),
                 });
@@ -270,6 +269,7 @@ mod tests {
                 assert_eq!(0, http_upstream_errors_total.clone().get() as u64);
 
                 let future_result = plugin.run_internal(InternalIO {
+                    name: Some(CincinnatiGraphFetchPlugin::PLUGIN_NAME.to_string()),
                     graph: Default::default(),
                     parameters: Default::default(),
                 });

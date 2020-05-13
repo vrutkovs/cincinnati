@@ -701,6 +701,7 @@ pub struct PluginExchange {
     // message fields
     pub graph: ::protobuf::SingularPtrField<Graph>,
     pub parameters: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
+    pub name: Option<String>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -774,6 +775,15 @@ impl PluginExchange {
     pub fn take_parameters(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
         ::std::mem::replace(&mut self.parameters, ::std::collections::HashMap::new())
     }
+
+    pub fn get_name(&self) -> Option<String> {
+        self.name.clone()
+    }
+
+    pub fn set_name(&mut self, v: Option<String>) {
+        self.name = v;
+    }
+
 }
 
 impl ::protobuf::Message for PluginExchange {

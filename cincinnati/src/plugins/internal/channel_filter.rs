@@ -10,9 +10,6 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 use commons::GraphError;
 use lazy_static::lazy_static;
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 static DEFAULT_CHANNEL_KEY: &str = "release.channels";
 
@@ -57,9 +54,6 @@ lazy_static! {
 #[async_trait]
 impl InternalPlugin for ChannelFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("channel-filter".to_string());
         let channel = get_multiple_values!(internal_io.parameters, "channel")
             .map_err(|e| GraphError::MissingParams(vec![e.to_string()]))?
             .clone();
@@ -101,6 +95,7 @@ impl InternalPlugin for ChannelFilterPlugin {
         trace!("removed {} releases", removed);
 
         Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
             graph,
             parameters: internal_io.parameters,
         })
@@ -146,6 +141,7 @@ mod tests {
             for channel in &mut datum.channels {
                 let plugin = plugin.clone();
                 let future_result = plugin.run_internal(InternalIO {
+                    name: Some(ChannelFilterPlugin::PLUGIN_NAME.to_string()),
                     graph: Default::default(),
                     parameters: [("channel", channel)]
                         .iter()
@@ -379,6 +375,7 @@ mod tests {
             println!("processing data set #{}: '{}'", i, datum.description);
             let plugin = plugin.clone();
             let future_processed_graph = plugin.run_internal(InternalIO {
+                name: Some(ChannelFilterPlugin::PLUGIN_NAME.to_string()),
                 graph: datum.input_graph,
                 parameters: datum.parameters,
             });

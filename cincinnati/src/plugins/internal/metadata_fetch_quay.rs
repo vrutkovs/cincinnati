@@ -9,9 +9,6 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 pub static DEFAULT_QUAY_LABEL_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_QUAY_MANIFESTREF_KEY: &str = "io.openshift.upgrades.graph.release.manifestref";
 pub static DEFAULT_QUAY_REPOSITORY: &str = "openshift";
@@ -102,10 +99,6 @@ impl QuayMetadataFetchPlugin {
 #[async_trait]
 impl InternalPlugin for QuayMetadataFetchPlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("metadata-fetch-quay".to_string());
-
         let (mut graph, parameters) = (io.graph, io.parameters);
 
         trace!("fetching metadata from quay labels...");
@@ -173,7 +166,11 @@ impl InternalPlugin for QuayMetadataFetchPlugin {
             }
         }
 
-        Ok(InternalIO { graph, parameters })
+        Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
+            graph,
+            parameters,
+        })
     }
 }
 
@@ -336,6 +333,7 @@ mod tests_net {
             .expect("could not initialize the QuayMetadataPlugin"),
         );
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(QuayMetadataFetchPlugin::PLUGIN_NAME.to_string()),
             graph: input_graph,
             parameters: Default::default(),
         });

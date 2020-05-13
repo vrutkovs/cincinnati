@@ -7,9 +7,6 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use std::convert::TryInto;
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 /// Default registry to scrape.
 pub static DEFAULT_SCRAPE_REGISTRY: &str = "https://quay.io";
 
@@ -137,10 +134,6 @@ impl ReleaseScrapeDockerv2Plugin {
 #[async_trait]
 impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("registry-scrape".to_string());
-
         let releases = registry::fetch_releases(
             &self.registry,
             &self.settings.repository,
@@ -167,6 +160,7 @@ impl InternalPlugin for ReleaseScrapeDockerv2Plugin {
         let graph = cincinnati::plugins::internal::graph_builder::release::create_graph(releases)?;
 
         Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
             graph,
             parameters: io.parameters,
         })
@@ -210,6 +204,7 @@ mod network_tests {
         let graph: cincinnati::Graph = {
             let mut graph_raw = runtime
                 .block_on(plugin.run_internal(InternalIO {
+                    name: Some(ReleaseScrapeDockerv2Plugin::PLUGIN_NAME.to_string()),
                     graph: Default::default(),
                     parameters: Default::default(),
                 }))?

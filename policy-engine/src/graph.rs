@@ -88,6 +88,7 @@ where
     let internal_io = cincinnati::plugins::process(
         plugins,
         cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
+            name: None,
             graph: Default::default(),
             parameters: plugin_params,
         }),

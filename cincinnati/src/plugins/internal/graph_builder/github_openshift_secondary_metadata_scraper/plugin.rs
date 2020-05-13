@@ -8,9 +8,6 @@ use self::cincinnati::plugins::prelude_plugin_impl::*;
 
 use tokio::sync::Mutex as FuturesMutex;
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 pub static DEFAULT_OUTPUT_WHITELIST: &[&str] = &[
     "channels/.+\\.ya+ml",
     "blocked-edges/.+\\.ya+ml",
@@ -448,10 +445,7 @@ impl PluginSettings for GithubOpenshiftSecondaryMetadataScraperSettings {
 #[async_trait]
 impl InternalPlugin for GithubOpenshiftSecondaryMetadataScraperPlugin {
     async fn run_internal(self: &Self, mut io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("github-secondary-metadata".to_string());
-
+        io.name = Some(Self::PLUGIN_NAME.to_string());
         io.parameters.insert(
             GRAPH_DATA_DIR_PARAM_KEY.to_string(),
             self.data_dir
@@ -520,6 +514,9 @@ mod network_tests {
         for _ in 0..2 {
             let _ = runtime.block_on(plugin.run(cincinnati::plugins::PluginIO::InternalIO(
                 InternalIO {
+                    name: Some(
+                        GithubOpenshiftSecondaryMetadataScraperPlugin::PLUGIN_NAME.to_string(),
+                    ),
                     graph: Default::default(),
                     parameters: Default::default(),
                 },

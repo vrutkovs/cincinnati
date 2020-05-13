@@ -4,9 +4,6 @@ use crate as cincinnati;
 use self::cincinnati::plugins::prelude::*;
 use self::cincinnati::plugins::prelude_plugin_impl::*;
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 pub static DEFAULT_KEY_FILTER: &str = "io.openshift.upgrades.graph";
 pub static DEFAULT_REMOVE_ALL_EDGES_VALUE: &str = "*";
 
@@ -27,15 +24,12 @@ pub struct EdgeAddRemovePlugin {
 #[async_trait]
 impl InternalPlugin for EdgeAddRemovePlugin {
     async fn run_internal(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("edge_add_remove".to_string());
-
         let mut graph = io.graph;
         self.add_edges(&mut graph)?;
         self.remove_edges(&mut graph)?;
 
         Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
             graph,
             parameters: io.parameters,
         })
@@ -384,6 +378,7 @@ mod tests {
             ..Default::default()
         });
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
             graph: input_graph.clone(),
             parameters: Default::default(),
         });
@@ -439,6 +434,7 @@ mod tests {
             ..Default::default()
         });
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
             graph: input_graph,
             parameters: Default::default(),
         });
@@ -503,6 +499,7 @@ mod tests {
             ..Default::default()
         });
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
             graph: input_graph,
             parameters: Default::default(),
         });
@@ -555,6 +552,7 @@ mod tests {
             ..Default::default()
         });
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
             graph: input_graph,
             parameters: Default::default(),
         });
@@ -611,6 +609,7 @@ mod tests {
         });
 
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
             graph: input_graph,
             parameters: Default::default(),
         });
@@ -662,6 +661,7 @@ mod tests {
                     ..Default::default()
                 });
                 let future_processed_graph = plugin.run_internal(InternalIO {
+                    name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
                     graph: input_graph.clone(),
                     parameters: Default::default(),
                 });
@@ -834,6 +834,7 @@ mod tests {
         let process_result = cincinnati::plugins::process(
             PLUGINS.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
+                name: Some(EdgeAddRemovePlugin::PLUGIN_NAME.to_string()),
                 graph: input_graph.clone(),
                 parameters: Default::default(),
             }),

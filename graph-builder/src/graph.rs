@@ -197,6 +197,7 @@ pub fn run(settings: &config::AppSettings, state: &State) -> ! {
         let scrape = cincinnati::plugins::process_blocking(
             state.plugins.iter(),
             cincinnati::plugins::PluginIO::InternalIO(cincinnati::plugins::InternalIO {
+                name: None,
                 // the first plugin will produce the initial graph
                 graph: Default::default(),
                 // the plugins used in the graph-builder don't expect any parameters yet

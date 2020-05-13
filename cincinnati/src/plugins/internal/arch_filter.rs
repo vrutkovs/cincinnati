@@ -77,9 +77,6 @@ fn infer_arch(arch: Option<String>, default_arch: String) -> Result<String, Grap
     }
 }
 
-use commons::tracing::get_tracer;
-use opentelemetry::api::{Span, Tracer};
-
 /// Regex for arch label validation.
 static ARCH_VALIDATION_REGEX_STR: &str = r"^[0-9a-z]+$";
 
@@ -91,10 +88,6 @@ lazy_static! {
 #[async_trait]
 impl InternalPlugin for ArchFilterPlugin {
     async fn run_internal(self: &Self, internal_io: InternalIO) -> Fallible<InternalIO> {
-        get_tracer()
-            .get_active_span()
-            .update_name("arch-filter".to_string());
-
         let arch = infer_arch(
             internal_io.parameters.get("arch").map(|s| s.to_string()),
             self.default_arch.clone(),
@@ -157,6 +150,7 @@ impl InternalPlugin for ArchFilterPlugin {
             .map_err(|e| GraphError::ArchVersionError(e.to_string()))?;
 
         Ok(InternalIO {
+            name: Some(Self::PLUGIN_NAME.to_string()),
             graph,
             parameters: internal_io.parameters,
         })
@@ -236,6 +230,7 @@ mod tests {
             default_arch: "amd64".to_string(),
         });
         let future_processed_graph = plugin.run_internal(InternalIO {
+            name: Some(ArchFilterPlugin::PLUGIN_NAME.to_string()),
             graph: input_graph.clone(),
             parameters: [("arch", "arm64")]
                 .iter()

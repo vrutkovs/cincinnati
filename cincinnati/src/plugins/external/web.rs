@@ -71,6 +71,7 @@ mod tests {
         });
 
         let input_internal = InternalIO {
+            name: Some("external".to_string()),
             graph: generate_graph(),
             parameters: [("hello".to_string(), "plugin".to_string())]
                 .iter()
@@ -105,6 +106,7 @@ mod tests {
         });
 
         let input_internal = InternalIO {
+            name: Some("external".to_string()),
             graph: generate_graph(),
             parameters: [("hello".to_string(), "plugin".to_string())]
                 .iter()

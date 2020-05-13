@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
 
-use opentelemetry::api::{trace::futures::Instrument, Tracer};
+use opentelemetry::api::{trace::futures::Instrument, Span, Tracer};
 
 pub mod prelude {
     use crate as cincinnati;
@@ -107,6 +107,7 @@ pub enum PluginResult {
 #[derive(Debug, PartialEq)]
 #[cfg_attr(test, derive(Clone))]
 pub struct InternalIO {
+    pub name: Option<String>,
     pub graph: cincinnati::Graph,
     pub parameters: HashMap<String, String>,
 }
@@ -115,6 +116,7 @@ pub struct InternalIO {
 #[derive(Debug, PartialEq)]
 #[cfg_attr(test, derive(Clone))]
 pub struct ExternalIO {
+    pub name: Option<String>,
     pub bytes: Vec<u8>,
 }
 
@@ -127,6 +129,7 @@ where
     T: Sync + Send,
 {
     async fn run(self: &Self, t: T) -> Fallible<T>;
+    async fn get_name(self: &Self) -> Option<String>;
 }
 
 /// Trait to be implemented by internal plugins with their native IO type
@@ -231,6 +234,7 @@ impl TryFrom<PluginExchange> for ExternalIO {
         use protobuf::Message;
 
         Ok(Self {
+            name: exchange.get_name().into(),
             bytes: exchange.write_to_bytes()?,
         })
     }
@@ -247,6 +251,7 @@ impl TryFrom<ExternalIO> for InternalIO {
         let mut plugin_exchange: PluginExchange = external_io.try_into()?;
 
         Ok(Self {
+            name: plugin_exchange.get_name().into(),
             graph: plugin_exchange.take_graph().into(),
             parameters: plugin_exchange.take_parameters(),
         })
@@ -260,6 +265,7 @@ impl From<InternalIO> for interface::PluginExchange {
     fn from(internal_io: InternalIO) -> Self {
         let mut plugin_exchange = Self::new();
 
+        plugin_exchange.set_name(internal_io.name.into());
         plugin_exchange.set_graph(internal_io.graph.into());
         plugin_exchange.set_parameters(internal_io.parameters);
 
@@ -331,6 +337,10 @@ where
 
         Ok(self.0.run_internal(internal_io).await?.into())
     }
+
+    async fn get_name(self: &Self) -> Option<String> {
+        self.get_name().await
+    }
 }
 
 /// This implementation allows the process function to run ipmlementors of
@@ -345,6 +355,10 @@ where
         let external_io: ExternalIO = plugin_io.try_into()?;
 
         Ok(self.0.run_external(external_io).await?.into())
+    }
+
+    async fn get_name(self: &Self) -> Option<String> {
+        self.get_name().await
     }
 }
 
@@ -362,6 +376,10 @@ where
 
     for next_plugin in plugins {
         let span = get_tracer().start("plugin", None);
+        match next_plugin.get_name().await {
+            Some(s) => span.update_name(s),
+            None => {}
+        };
         io = next_plugin.run(io).instrument(span).await?;
     }
 
@@ -471,6 +489,7 @@ mod tests {
     fn convert_roundtrip_internalio_externalio() {
         let graph = generate_graph();
         let input_internal = InternalIO {
+            name: Some("foo".to_string()),
             graph: graph.clone(),
             parameters: [("hello".to_string(), "plugin".to_string())]
                 .iter()
@@ -517,6 +536,10 @@ mod tests {
         async fn run(self: &Self, io: InternalIO) -> Fallible<InternalIO> {
             Ok(io)
         }
+
+        async fn get_name(self: &Self) -> Option<String> {
+            Some("test-plugin".to_string())
+        }
     }
 
     #[derive(Debug)]
@@ -531,6 +554,10 @@ mod tests {
     impl Plugin<ExternalIO> for TestExternalPlugin {
         async fn run(self: &Self, io: ExternalIO) -> Fallible<ExternalIO> {
             Ok(io)
+        }
+
+        async fn get_name(self: &Self) -> Option<String> {
+            Some("test-plugin".to_string())
         }
     }
 
@@ -551,6 +578,7 @@ mod tests {
         }
 
         let initial_internalio = InternalIO {
+            name: Some("foo".to_string()),
             graph: generate_graph(),
             parameters: [("hello".to_string(), "plugin".to_string())]
                 .iter()
@@ -559,6 +587,7 @@ mod tests {
         };
 
         let expected_internalio = InternalIO {
+            name: Some("foo".to_string()),
             graph: generate_graph(),
             parameters: [
                 ("hello".to_string(), "plugin".to_string()),
@@ -598,6 +627,7 @@ mod tests {
         }
 
         let initial_internalio = InternalIO {
+            name: Some("foo".to_string()),
             graph: generate_graph(),
             parameters: [("hello".to_string(), "plugin".to_string())]
                 .iter()
@@ -609,6 +639,7 @@ mod tests {
 
         for i in 0..runs {
             let expected_internalio = InternalIO {
+                name: Some("foo".to_string()),
                 graph: generate_graph(),
                 parameters: [
                     ("hello".to_string(), "plugin".to_string()),
@@ -647,6 +678,7 @@ mod tests {
         }
 
         let initial_internalio = InternalIO {
+            name: Some("foo".to_string()),
             graph: Default::default(),
             parameters: Default::default(),
         };
@@ -692,6 +724,7 @@ mod tests {
         }
 
         let initial_internalio = InternalIO {
+            name: Some("foo".to_string()),
             graph: Default::default(),
             parameters: Default::default(),
         };
