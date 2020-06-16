@@ -118,7 +118,8 @@ impl CincinnatiGraphFetchPlugin {
         headers.insert(ACCEPT, HeaderValue::from_static(CONTENT_TYPE));
         {
             let span = get_tracer().get_active_span();
-            set_context(span.get_context(), &mut headers);
+            set_context(span.get_context(), &mut headers)
+                .context("failed to set the tracing context")?;
         }
 
         trace!("getting graph from upstream at {}", self.upstream);

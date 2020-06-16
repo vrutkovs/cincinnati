@@ -5,6 +5,7 @@ use opentelemetry::api::{
 };
 use opentelemetry::{global, sdk};
 use opentelemetry_jaeger::{Exporter, Process};
+use std::collections::HashMap;
 
 use actix_web::dev::ServiceRequest;
 use actix_web::http;
@@ -54,17 +55,14 @@ impl<'a> Carrier for HttpHeaderMapCarrier<'a> {
     }
 }
 
-struct ClientHeaderMapCarrier<'a>(&'a mut HeaderMap);
-impl<'a> Carrier for ClientHeaderMapCarrier<'a> {
+struct ClientHeaderMapCarrier(HashMap<String, String>);
+impl Carrier for ClientHeaderMapCarrier {
     fn get(&self, key: &'static str) -> Option<&str> {
-        self.0.get(key).and_then(|value| value.to_str().ok())
+        self.0.get(key).map(|s| s.as_str())
     }
 
     fn set(&mut self, key: &'static str, value: String) {
-        self.0.insert(
-            HeaderName::from_bytes(key.as_bytes()).unwrap(),
-            HeaderValue::from_str(&value).unwrap(),
-        );
+        self.0.insert(key.to_string(), value);
     }
 }
 
@@ -75,17 +73,35 @@ pub fn get_context(req: &ServiceRequest) -> SpanContext {
 }
 
 /// Inject context data into headers
-pub fn set_context(context: SpanContext, headers: &mut HeaderMap) {
+pub fn set_context(context: SpanContext, headers: &mut HeaderMap) -> crate::errors::Fallible<()> {
+    use std::str::FromStr;
+
+    let mut carrier = {
+        let headers_converted = headers.iter().try_fold(
+            HashMap::<String, String>::with_capacity(headers.len()),
+            |mut sum, (name, value)| -> crate::errors::Fallible<_> {
+                sum.insert(name.as_str().to_string(), value.to_str()?.to_string());
+                Ok(sum)
+            },
+        )?;
+
+        ClientHeaderMapCarrier(headers_converted)
+    };
+
     let propagator = TraceContextPropagator::new();
-    propagator.inject(context, &mut ClientHeaderMapCarrier(headers));
+    propagator.inject(context, &mut carrier);
+
+    for (name, value) in carrier.0 {
+        headers.insert(HeaderName::from_str(&name)?, HeaderValue::from_str(&value)?);
+    }
+
+    Ok(())
 }
 
 /// Add span attributes from servicerequest
 pub fn set_span_tags(req: &ServiceRequest, span: &dyn Span) {
     span.set_attribute(Key::new("path").string(req.path()));
     req.headers().iter().for_each(|(k, v)| {
-        span.set_attribute(
-            Key::new(format!("header.{}", k.to_string())).string(v.to_str().unwrap()),
-        )
+        span.set_attribute(Key::new(format!("header.{}", k)).bytes(v.as_bytes().to_vec()))
     });
 }
