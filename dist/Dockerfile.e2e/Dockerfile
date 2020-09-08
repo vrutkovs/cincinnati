@@ -4,17 +4,10 @@ COPY . .
 
 # Build and copy test binary
 RUN cd e2e && \
-    cargo build --tests --features test-e2e-prom-query && \
-    mkdir -p /opt/cincinnati/bin && \
-    cp -rvf ../target/debug/e2e-* /opt/cincinnati/bin && \
-    rm -rf /opt/cincinnati/bin/e2e-*.d && \
-    mv /opt/cincinnati/bin/e2e-* /opt/cincinnati/bin/cincinnati-e2e-test && \
-    cp -rvf ../target/debug/prometheus_query-* /opt/cincinnati/bin && \
-    rm -rf /opt/cincinnati/bin/prometheus_query-*.d && \
-    mv /opt/cincinnati/bin/prometheus_query-* /opt/cincinnati/bin/cincinnati-prometheus_query-test && \
-    cp -rvf ../target/debug/slo-* /opt/cincinnati/bin && \
-    rm -rf /opt/cincinnati/bin/slo-*.d && \
-    mv /opt/cincinnati/bin/slo-* /opt/cincinnati/bin/cincinnati-e2e-slo
+    cargo build --tests --features test-e2e-prom-query --message-format=json \
+    | jq -r "select(.profile.test == true) | .filenames[]" \
+    | xargs -n1 -i cp -rvf {} /opt/cincinnati/bin && \
+    for f in /opt/cincinnati/bin/*; do mv -- ${f} ${f%-*}; done
 
 FROM registry.svc.ci.openshift.org/openshift/release:golang-1.13 AS golang_builder
 RUN env GOBIN=/usr/local/bin go get -u github.com/tsenart/vegeta
