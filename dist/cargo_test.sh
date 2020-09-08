@@ -39,7 +39,8 @@ function run_tests() {
       export CARGO_ARGS="test --no-run"
 
       # delete leftover test executibles
-      [[ ! -d "${CARGO_TARGET_DIR}"/debug ]] || find "${CARGO_TARGET_DIR}"/debug/ -maxdepth 1 -type f -executable -print -delete
+      [[ ! -d "${CARGO_TARGET_DIR}"/debug/deps ]] || \
+          find "${CARGO_TARGET_DIR}"/debug/deps -maxdepth 1 -type f -executable -a ! -name "*.so" -print -delete
     fi
 
     (
@@ -48,8 +49,7 @@ function run_tests() {
         cargo ${CARGO_ARGS:-test} ${cargo_test_flags[${directory}]}
 
         if [[ \"${HAS_KOV}\" -eq \"1\" ]]; then
-          rm -f \"${CARGO_TARGET_DIR}\"/debug/${directory}
-          find \"${CARGO_TARGET_DIR}\"/debug/ -maxdepth 1 -type f -executable -print0 | xargs -n1 -0 \
+          find \"${CARGO_TARGET_DIR}\"/debug/deps -maxdepth 1 -type f -executable -a ! -name "*.so" -print0 | xargs -n1 -0 \
           kcov \
               --exclude-pattern=$HOME/.cargo \
               --verify \
