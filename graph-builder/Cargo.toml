@@ -20,7 +20,7 @@ log = "^0.4.3"
 prometheus = "0.9"
 quay = { path = "../quay" }
 regex = "^1.1.0"
-reqwest = "^0.10"
+reqwest = "^0.11"
 semver = { version = "^0.11", features = [ "serde" ] }
 serde = "^1.0.70"
 serde_derive = "^1.0.70"
@@ -28,7 +28,8 @@ serde_json = "^1.0.22"
 smart-default = "^0.6"
 structopt = "^0.3"
 tar = "^0.4.16"
-tokio = { version = "0.2.11", features = [ "fs", "stream" ] }
+tokio = { version = "1.0", features = [ "fs" ] }
+tokio-stream = { version = "0.1", features = ["fs"] }
 toml = "^0.5"
 url = "^2.2"
 parking_lot = "^0.11"

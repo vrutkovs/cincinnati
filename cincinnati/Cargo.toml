@@ -18,12 +18,13 @@ prometheus = "0.9"
 protobuf = "=2.8.0"
 quay = { path = "../quay" }
 regex = "^1.1.0"
-reqwest = { version = "^0.10", features = ["gzip"] }
+reqwest = { version = "^0.11", features = ["gzip"] }
 serde = "1.0.70"
 serde_derive = "1.0.70"
 serde_json = "^1.0.22"
 smart-default = "^0.6"
-tokio = { version = "0.2.11", features = [ "time", "fs", "stream", "rt-threaded", "blocking", "macros" ] }
+tokio = { version = "1.0", features = [ "time", "fs", "macros" ] }
+tokio-stream = { version = "0.1", features = ["fs"] }
 toml = "^0.5"
 url = "^2.2"
 semver = { version = "^0.11", features = [ "serde" ] }

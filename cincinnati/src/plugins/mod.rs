@@ -417,7 +417,7 @@ where
     T: Sync + Send,
     T: 'static,
 {
-    let mut runtime = tokio::runtime::Runtime::new()?;
+    let runtime = tokio::runtime::Runtime::new()?;
 
     let timeout = match timeout {
         None => return runtime.block_on(process(plugins, initial_io)),

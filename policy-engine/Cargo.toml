@@ -34,6 +34,6 @@ actix-service = "1.0.0"
 built = { version = "^0.4", features = [ "git2" ] }
 
 [dev-dependencies]
-tokio = "^0.2"
+tokio = "^1.0"
 twoway = "^0.2"
 mockito = "^0.28"
