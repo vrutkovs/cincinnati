@@ -15,7 +15,7 @@ futures-locks = "0.5.0"
 lazy_static = "^1.2.0"
 log = "^0.4.3"
 prometheus = "0.9"
-protobuf = "2.0"
+protobuf = "=2.8.0"
 quay = { path = "../quay" }
 regex = "^1.1.0"
 reqwest = { version = "^0.10", features = ["gzip"] }
